@@ -1,0 +1,45 @@
+﻿{
+  "_comment_guide": "=== 生产级日志配置文件模板 (修改后需重启生效) ===",
+
+  "global_settings": {
+    "_comment_fmt": "格式模板: 时间 [线程ID] [Logger名] [级别] [文件:行号] [函数] 消息",
+    "format_pattern": "[%Y-%m-%d %H:%M:%S.%e] [%t] [%n] [%L] [%s:%#] [%!] %v",
+
+    "_comment_async": "异步队列配置。queue_size 建议为 2 的幂次方。policy 可选 'block'(阻塞) 或 'overrun_oldest'(丢弃旧日志)",
+    "async_queue_size": 8192,
+    "async_overflow_policy": "block",
+
+    "_comment_flush": "刷盘策略。flush_on_level 可选 trace, debug, info, warn, error, fatal",
+    "flush_interval_seconds": 5,
+    "flush_on_level": "error"
+  },
+
+  "sinks": {
+    "console_out": {
+      "_comment": "开发用：彩色控制台输出，只显示 Info 及以上重要信息",
+      "type": "stdout_color_sink",
+      "level": "Info"
+    },
+    "main_file": {
+      "_comment": "生产用：按大小轮转的文件日志，保留 Debug 细节。最大 10MB * 5 个文件",
+      "type": "rotating_file_sink",
+      "base_name": "logs/app.log",
+      "max_size": 10485760,
+      "max_files": 5,
+      "level": "Debug"
+    }
+  },
+
+  "rules": [
+    {
+      "_comment": "示例规则：让 'System.Network' 模块的日志只存文件，不打控制台（减少刷屏）",
+      "matcher": "System.Network",
+      "sinks": [ "main_file" ]
+    }
+  ],
+
+  "default_rule": {
+    "_comment": "兜底规则：未匹配到上述规则的 Logger，将同时输出到控制台和文件",
+    "sinks": [ "console_out", "main_file" ]
+  }
+}

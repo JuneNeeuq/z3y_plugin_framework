@@ -1,0 +1,45 @@
+﻿{
+  "global_settings": {
+    "format_pattern": "[%Y-%m-%d %H:%M:%S.%e] [%t] [%n] [%-5l] %v",
+    "async_queue_size": 32768,
+    "async_overflow_policy": "block",
+    "flush_interval_seconds": 5,
+    "flush_on_level": "error"
+  },
+
+  "sinks": {
+    "system_file": {
+      "type": "rotating_file_sink",
+      "base_name": "system.log",
+      "max_size": 52428800,
+      "max_files": 3,
+      "level": "Info"
+    },
+    "business_file": {
+      "type": "rotating_file_sink",
+      "base_name": "business.log",
+      "max_size": 52428800,
+      "max_files": 3,
+      "level": "Info"
+    },
+    "console": {
+      "type": "stdout_color_sink",
+      "level": "Warn"
+    }
+  },
+
+  "rules": [
+    {
+      "matcher": "System",
+      "sinks": [ "system_file" ]
+    },
+    {
+      "matcher": "Business",
+      "sinks": [ "business_file" ]
+    }
+  ],
+
+  "default_rule": {
+    "sinks": [ "console" ]
+  }
+}
