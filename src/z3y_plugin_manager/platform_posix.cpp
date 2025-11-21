@@ -80,8 +80,7 @@ namespace z3y {
 #if __cplusplus >= 201703L
 #pragma GCC diagnostic pop
 #endif
-            }
-            catch (const std::exception& e) {
+            } catch (const std::exception& e) {
                 // 如果转换失败（例如 locale 设置不正确），
                 // 返回原始字符串，并附带警告
                 return std::string(locale_str) + " (locale-to-UTF8 conversion failed)";

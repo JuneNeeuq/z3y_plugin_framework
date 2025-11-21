@@ -135,8 +135,7 @@ namespace z3y {
         // 这种无意义但合法的转换
         if constexpr (std::is_same_v<T, IComponent>) {
             return internal::PluginCastImpl<T>(component, out_result);
-        }
-        else {
+        } else {
             return internal::PluginCastImpl<T>(component, out_result);
         }
     }

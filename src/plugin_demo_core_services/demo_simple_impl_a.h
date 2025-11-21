@@ -81,7 +81,7 @@ namespace z3y {
              *
              * 2. **怎么做？**
              * 保持它在构造时为 `nullptr`。
-             * 在 *首次* 需要它的时候（例如在 `GetSimpleString()` 中） 
+             * 在 *首次* 需要它的时候（例如在 `GetSimpleString()` 中）
              * 才调用 `z3y::GetDefaultService`
              * 来获取它并缓存到此成员变量中。
              *

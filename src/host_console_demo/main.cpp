@@ -201,8 +201,7 @@ int main(int argc, char* argv[]) {
             // [设计]
             // 宿主只依赖 `IDemoRunner` 的“默认” 实现。
             demo_runner = z3y::GetDefaultService<z3y::demo::IDemoRunner>();
-        }
-        catch (const z3y::PluginException& e) {
+        } catch (const z3y::PluginException& e) {
             // [健壮性]
             // 如果 `IDemoRunner` (核心业务) 都获取失败，
             // 这是一个致命错误，程序无法继续。
@@ -236,8 +235,13 @@ int main(int argc, char* argv[]) {
         // c. 销毁 PluginManager 自身 (这将停止 EventLoop 线程)
         manager.reset();
 
-    }
-    catch (const z3y::PluginException& e) {
+        // 4d. [关键] 显式销毁单例
+        // 这会强制执行 PluginManager 的析构函数，停止线程池，清理所有静态资源。
+        // 确保在 main 函数退出前，环境是完全干净的。
+        z3y::PluginManager::Destroy();
+        std::cout << "[Host] Cleanup complete. Exiting." << std::endl;
+
+    } catch (const z3y::PluginException& e) {
         // [健壮性]
         // 捕获在 `Create` 或 `GetDefaultService`(步骤 7, 8)
         // 中 发生的 *致命* 异常
@@ -246,13 +250,11 @@ int main(int argc, char* argv[]) {
             "level: "
             << e.what() << std::endl;
         return 1;
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         std::cerr << "\n[Host] [!! FATAL !!] A standard exception was caught: "
             << e.what() << std::endl;
         return 1;
-    }
-    catch (...) {
+    } catch (...) {
         std::cerr << "\n[Host] [!! FATAL !!] An unknown exception was caught."
             << std::endl;
         return 1;

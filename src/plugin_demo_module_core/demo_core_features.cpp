@@ -132,8 +132,7 @@ namespace z3y {
                 if (auto [logger, err] = z3y::TryGetDefaultService<IDemoLogger>();
                     err == InstanceError::kSuccess) {
                     logger_ = logger;
-                }
-                else {
+                } else {
                     // 如果连日志服务都没有，无法继续测试，
                     // 只能打印到 cerr。
                     std::cerr << "DemoCoreFeatures cannot run: IDemoLogger is missing ("
@@ -150,8 +149,7 @@ namespace z3y {
                 // (这是抛出异常的 API)
                 auto logger_default = z3y::GetDefaultService<IDemoLogger>();
                 logger_default->Log("   ...Success: GetDefaultService<IDemoLogger> works.");
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 logger_->Log("   ...[FAIL] " + std::string(e.what()));
             }
 
@@ -162,8 +160,7 @@ namespace z3y {
                 // "Demo.Simple.A" 被注册为 IDemoSimple 的默认实现
                 auto simple_a = z3y::CreateDefaultInstance<IDemoSimple>();
                 logger_->Log("   ...Success: " + simple_a->GetSimpleString());
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 logger_->Log("   ...[FAIL] " + std::string(e.what()));
             }
 
@@ -173,8 +170,7 @@ namespace z3y {
                 // "Demo.Simple.B" 是 IDemoSimple 的非默认实现
                 auto simple_b = z3y::CreateInstance<IDemoSimple>("Demo.Simple.B");
                 logger_->Log("   ...Success: " + simple_b->GetSimpleString());
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 logger_->Log("   ...[FAIL] " + std::string(e.what()));
             }
 
@@ -186,11 +182,9 @@ namespace z3y {
                 z3y::TryCreateInstance<IDemoSimple>("Alias.That.Does.Not.Exist");
                 err == InstanceError::kErrorAliasNotFound) {
                 logger_->Log("   ...Success: Caught expected kErrorAliasNotFound.");
-            }
-            else if (err == InstanceError::kSuccess) {
+            } else if (err == InstanceError::kSuccess) {
                 logger_->Log("   ...[FAIL] Did not fail!");
-            }
-            else {
+            } else {
                 logger_->Log("   ...[FAIL] Caught wrong error: " + ResultToString(err));
             }
 
@@ -201,11 +195,9 @@ namespace z3y {
             if (auto [simple_a_service, err] = z3y::TryGetService<IDemoSimple>("Demo.Simple.A");
                 err == InstanceError::kErrorNotAService) {
                 logger_->Log("   ...Success: Caught expected kErrorNotAService.");
-            }
-            else if (err == InstanceError::kSuccess) {
+            } else if (err == InstanceError::kSuccess) {
                 logger_->Log("   ...[FAIL] Did not fail!");
-            }
-            else {
+            } else {
                 logger_->Log("   ...[FAIL] Caught wrong error: " + ResultToString(err));
             }
 
@@ -217,11 +209,9 @@ namespace z3y {
                 z3y::TryCreateInstance<IDemoLogger>("Demo.Logger.Default");
                 err == InstanceError::kErrorNotAComponent) {
                 logger_->Log("   ...Success: Caught expected kErrorNotAComponent.");
-            }
-            else if (err == InstanceError::kSuccess) {
+            } else if (err == InstanceError::kSuccess) {
                 logger_->Log("   ...[FAIL] Did not fail!");
-            }
-            else {
+            } else {
                 logger_->Log("   ...[FAIL] Caught wrong error: " + ResultToString(err));
             }
         }

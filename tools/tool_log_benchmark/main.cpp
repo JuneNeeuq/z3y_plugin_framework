@@ -226,11 +226,24 @@ int main(int argc, char* argv[]) {
         // 2. 性能压测
         RunMixedPerformanceTest(log_mgr);
 
+        // 3. [清理]
         PrintSeparator("Shutting Down");
-        // 清理资源
+
+        // 3a. 释放业务对象
+        // (如果有 logger 变量，这里要 reset)
         log_mgr.reset();
+
+        // 3b. 卸载插件
         manager->UnloadAllPlugins();
-        std::cout << "[Exit] 测试完成。" << std::endl;
+
+        // 3c. 释放本地引用
+        manager.reset();
+
+        // 3d. [关键] 显式销毁单例
+        // 保证 RingBuffer 线程停止，所有文件句柄 flush 并关闭。
+        z3y::PluginManager::Destroy();
+
+        std::cout << "[Exit] 测试结束。" << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "[Fatal Exception] " << e.what() << std::endl;

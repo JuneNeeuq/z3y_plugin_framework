@@ -111,8 +111,7 @@ namespace z3y {
             if (auto [logger, err] = z3y::TryGetDefaultService<IDemoLogger>();
                 err == InstanceError::kSuccess) {
                 logger_ = logger; // 缓存指针
-            }
-            else {
+            } else {
                 // [健壮性]
                 // 这是一个关键失败，我们没有 `logger_` 就无法报告结果。
                 // (由于 logger_ 获取失败，只能打印到 cerr)
@@ -163,8 +162,7 @@ namespace z3y {
 
                     logger_->Log("---== Finished Demo: " + module_details.alias + " ==---");
                 }
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 // [健壮性]
                 // 如果 `GetService<IPluginQuery>` 失败， 我们会捕获到异常。
                 logger_->Log("[FATAL] DemoRunnerService failed to get IPluginQuery: " +

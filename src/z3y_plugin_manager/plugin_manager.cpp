@@ -64,15 +64,13 @@ namespace z3y {
             try {
                 // 调用宿主提供的处理器
                 (*handler_copy)(e);
-            }
-            catch (...) {
+            } catch (...) {
                 // 异常处理器自己抛出了异常，这是严重错误
                 std::cerr
                     << "[z3y FW] CRITICAL: Exception handler itself threw an exception."
                     << std::endl;
             }
-        }
-        else {
+        } else {
             // 宿主未提供处理器，打印到 stderr
             std::cerr << "[z3y FW] Unhandled plugin exception: " << e.what()
                 << std::endl;
@@ -132,27 +130,25 @@ namespace z3y {
      * @brief [Pimpl] 析构函数 (必须在 .cpp 中实现)
      */
     PluginManager::~PluginManager() {
-        // 1. 停止事件循环
+        // [阶段 1] 停止事件循环线程
         {
-            std::lock_guard lock(pimpl_->queue_mutex_);
+            std::lock_guard<std::mutex> lock(pimpl_->queue_mutex_);
             pimpl_->running_ = false;
         }
-        pimpl_->queue_cv_.notify_one();  // 唤醒 EventLoop 线程
+        pimpl_->queue_cv_.notify_one();
         if (pimpl_->event_loop_thread_.joinable()) {
-            pimpl_->event_loop_thread_.join(); // 等待线程退出
+            pimpl_->event_loop_thread_.join();
         }
-        // 2. 清除静态单例
-        {
-            std::lock_guard lock(GetStaticMutex());
-            if (GetStaticInstancePtr().get() == this) {
-                GetStaticInstancePtr().reset();
-            }
-        }
-        // 3. 清理所有注册表和库 (在 ClearAllRegistries 中执行)
+
+        // [阶段 2] 清理所有资源
         ClearAllRegistries();
 
-        // 4. `pimpl_` (std::unique_ptr) 在此处自动销毁，
-        //    此时 `PluginManagerPimpl` 是一个完整类型。
+        // [变更说明]
+        // 以前这里会检查 GetStaticInstancePtr() 并 reset。
+        // 现在我们移除了这段逻辑。因为：
+        // 1. 如果是通过 Destroy() 调用的析构，静态变量在 Destroy() 中已经被置空了。
+        // 2. 如果是通过程序退出（静态析构）调用的，此时再访问静态变量属于 UB (Undefined Behavior)。
+        // 结论：析构函数只负责清理 *自己* 的资源 (pimpl_)，不应干涉 *全局* 状态。
     }
 
     // --- 工厂函数 Create() ---
@@ -209,11 +205,35 @@ namespace z3y {
                 bus->FireGlobal<event::ComponentRegisterEvent>(
                     clsid::kEventBus, "z3y.core.eventbus", "internal.core", true);
             }
-        }
-        catch (const PluginException&) { /* 忽略 (不应发生) */
+        } catch (const PluginException&) { /* 忽略 (不应发生) */
         }
 
         return manager;
+    }
+
+    // [核心实现] Destroy
+// 作用：线程安全地、强制地销毁单例，重置环境。
+    void PluginManager::Destroy() {
+        PluginPtr<PluginManager> temp_holder;
+        {
+            // 1. 获取锁，防止与其他 Create/Destroy 竞争
+            std::lock_guard<std::mutex> lock(GetStaticMutex());
+
+            // 2. [关键技巧] 所有权转移 (Move Ownership)
+            // 将智能指针的所有权从静态变量移动到局部变量 temp_holder。
+            // 此时，GetStaticInstancePtr() 立即变为 nullptr。
+            // 这保证了如果有其他线程此时调用 Create()，可以成功创建新实例，而不会抛出"重复创建"异常。
+            temp_holder = std::move(GetStaticInstancePtr());
+        }
+        // 3. 释放锁
+        // 必须在释放锁 *之后* 再销毁对象。
+        // 因为 PluginManager 的析构函数可能会做很多事情（如停止线程），
+        // 如果我们在持有锁的情况下析构，而析构过程又试图获取这把锁（虽然不应该，但要防万一），就会死锁。
+
+        // 4. 触发析构
+        // temp_holder 离开作用域自动析构，或者显式 reset。
+        // 这会触发 PluginManager::~PluginManager()。
+        temp_holder.reset();
     }
 
     // --- 公共 API 实现 (委托给 Pimpl) ---
@@ -278,8 +298,7 @@ namespace z3y {
                     PluginManagerPimpl::SingletonHolder& holder = singleton_it->second;
                     if (holder.instance) {
                         // [强引用]
-                        // 添加到列表，确保在阶段 1
-                        // 期间它不会被销毁
+                        // 添加到列表，确保在阶段 1 期间它不会被销毁
                         shutdown_list.push_back(holder.instance);
                     }
                 }
@@ -290,11 +309,9 @@ namespace z3y {
         for (const auto& instance : shutdown_list) {
             try {
                 instance->Shutdown();
-            }
-            catch (const std::exception& e) {
+            } catch (const std::exception& e) {
                 ReportException(pimpl_.get(), e);
-            }
-            catch (...) {
+            } catch (...) {
                 static std::runtime_error shutdown_err(
                     "Unknown exception thrown from a plugin's Shutdown() method.");
                 ReportException(pimpl_.get(), shutdown_err);
@@ -502,8 +519,7 @@ namespace z3y {
                     throw PluginException(InstanceError::kErrorFactoryFailed);
                 }
                 holder->instance->Initialize();
-            }
-            catch (...) {
+            } catch (...) {
                 // [关键] 捕获构造或 Initialize()
                 // 期间的异常
                 holder->e_ptr = std::current_exception();
@@ -603,8 +619,7 @@ namespace z3y {
         try {
             InstanceError dummy_error;
             bus = PluginCast<IEventBus>(this->shared_from_this(), dummy_error);
-        }
-        catch (const PluginException&) { /* 忽略 */
+        } catch (const PluginException&) { /* 忽略 */
         }
 
         std::string path_str = file_path.string();
@@ -682,8 +697,7 @@ namespace z3y {
             if (bus)
                 bus->FireGlobal<event::PluginLoadSuccessEvent>(path_str);
             return true;
-        }
-        catch (const std::exception& e) {
+        } catch (const std::exception& e) {
             // [回滚] 捕获 `init_func` 中的异常
             {
                 // 清理事务上下文
@@ -700,8 +714,7 @@ namespace z3y {
                     out_error_message);
             PlatformUnloadLibrary(lib_handle);
             return false;
-        }
-        catch (...) {
+        } catch (...) {
             // [回滚] 捕获未知异常
             {
                 std::unique_lock lock(pimpl_->registry_mutex_);
@@ -742,8 +755,7 @@ namespace z3y {
                     }
                 }
             }
-        }
-        else {
+        } else {
             // 非递归迭代
             for (const auto& entry : std::filesystem::directory_iterator(dir)) {
                 if (PlatformIsPluginFile(entry.path())) {
@@ -799,8 +811,7 @@ namespace z3y {
                 bus->FireGlobal<event::ComponentRegisterEvent>(
                     clsid::kEventBus, "z3y.core.eventbus", "internal.core", true);
             }
-        }
-        catch (const PluginException&) { /* 忽略 */
+        } catch (const PluginException&) { /* 忽略 */
         }
     }
 

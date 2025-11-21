@@ -107,8 +107,7 @@ namespace z3y {
                     // `clsid::kPluginQuery` 在 `framework/i_plugin_query.h` 中定义。
                     query_ = z3y::GetService<IPluginQuery>(clsid::kPluginQuery);
                 }
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 // [健壮性]
                 // 如果连 ILogger 或 IPluginQuery 都拿不到，测试无法运行。
                 std::cerr
@@ -136,8 +135,7 @@ namespace z3y {
                     std::to_string(details.is_singleton));
                 logger_->Log("   ... IsDefault: " +
                     std::to_string(details.is_registered_as_default));
-            }
-            else {
+            } else {
                 logger_->Log("   ... [FAIL] Could not find 'Demo.Logger.Default'!");
             }
 
@@ -193,8 +191,7 @@ namespace z3y {
 
                 logger_->Log("   ... Success: Interface inheritance and multiple "
                     "QueryInterface casts work.");
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 logger_->Log("   ... [FAIL] " + std::string(e.what()));
             }
 
@@ -217,16 +214,14 @@ namespace z3y {
                 auto simple_v2 = z3y::CreateInstance<IDemoSimpleV2>("Demo.Simple.A");
                 logger_->Log(
                     "   ... [FAIL] Did not throw exception for version mismatch!");
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 // [核心]
                 // 捕获 `PluginException` 并检查 *具体* 的错误码。
                 if (e.GetError() == InstanceError::kErrorVersionMajorMismatch) {
                     logger_->Log(
                         "   ... Success: Caught expected "
                         "kErrorVersionMajorMismatch.");
-                }
-                else {
+                } else {
                     logger_->Log("   ... [FAIL] Caught wrong exception: " +
                         std::string(e.what()));
                 }

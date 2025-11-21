@@ -208,8 +208,7 @@ namespace z3y {
             if (bus) {
                 bus->FireGlobal<TEvent>(std::forward<Args>(args)...);
             }
-        }
-        catch (const PluginException&) {
+        } catch (const PluginException&) {
             // 忽略异常 (例如，在关闭过程中 EventBus 服务已被销毁)
         }
     }
@@ -257,8 +256,7 @@ namespace z3y {
             if (bus) {
                 bus->Unsubscribe(subscriber);
             }
-        }
-        catch (const PluginException&) {
+        } catch (const PluginException&) {
             // 忽略异常
         }
     }
@@ -302,11 +300,9 @@ namespace z3y {
             // [受众：框架维护者]
             // 内部仍然调用 *抛出* 版本，但将其捕获并转换为错误码。
             return { manager->GetDefaultService<T>(), InstanceError::kSuccess };
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return { nullptr, e.GetError() };
-        }
-        catch (...) {
+        } catch (...) {
             return { nullptr, InstanceError::kErrorInternal };
         }
     }
@@ -327,11 +323,9 @@ namespace z3y {
         }
         try {
             return { manager->GetService<T>(alias), InstanceError::kSuccess };
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return { nullptr, e.GetError() };
-        }
-        catch (...) {
+        } catch (...) {
             return { nullptr, InstanceError::kErrorInternal };
         }
     }
@@ -352,11 +346,9 @@ namespace z3y {
         }
         try {
             return { manager->GetService<T>(clsid), InstanceError::kSuccess };
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return { nullptr, e.GetError() };
-        }
-        catch (...) {
+        } catch (...) {
             return { nullptr, InstanceError::kErrorInternal };
         }
     }
@@ -376,11 +368,9 @@ namespace z3y {
         }
         try {
             return { manager->CreateDefaultInstance<T>(), InstanceError::kSuccess };
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return { nullptr, e.GetError() };
-        }
-        catch (...) {
+        } catch (...) {
             return { nullptr, InstanceError::kErrorInternal };
         }
     }
@@ -401,11 +391,9 @@ namespace z3y {
         }
         try {
             return { manager->CreateInstance<T>(alias), InstanceError::kSuccess };
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return { nullptr, e.GetError() };
-        }
-        catch (...) {
+        } catch (...) {
             return { nullptr, InstanceError::kErrorInternal };
         }
     }
@@ -426,11 +414,9 @@ namespace z3y {
         }
         try {
             return { manager->CreateInstance<T>(clsid), InstanceError::kSuccess };
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return { nullptr, e.GetError() };
-        }
-        catch (...) {
+        } catch (...) {
             return { nullptr, InstanceError::kErrorInternal };
         }
     }
@@ -453,11 +439,9 @@ namespace z3y {
                 return InstanceError::kSuccess;
             }
             return InstanceError::kErrorInternal;  // EventBus 服务不存在
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return e.GetError();
-        }
-        catch (...) {
+        } catch (...) {
             return InstanceError::kErrorInternal;
         }
     }
@@ -502,11 +486,9 @@ namespace z3y {
             return { bus->SubscribeGlobal<TEvent>(
                         subscriber, std::forward<TCallback>(callback), type),
                     InstanceError::kSuccess };
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return { z3y::Connection{}, e.GetError() };
-        }
-        catch (...) {
+        } catch (...) {
             return { z3y::Connection{}, InstanceError::kErrorInternal };
         }
     }
@@ -528,11 +510,9 @@ namespace z3y {
                 return InstanceError::kSuccess;
             }
             return InstanceError::kErrorInternal;
-        }
-        catch (const PluginException& e) {
+        } catch (const PluginException& e) {
             return e.GetError();
-        }
-        catch (...) {
+        } catch (...) {
             return InstanceError::kErrorInternal;
         }
     }

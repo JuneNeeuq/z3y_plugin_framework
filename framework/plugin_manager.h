@@ -212,6 +212,18 @@ namespace z3y {
          */
         [[nodiscard]] static PluginPtr<PluginManager> Create();
 
+        /**
+        * @brief [销毁] 显式销毁框架实例 (Safe Shutdown)。
+        *
+        * [设计思想 - 为什么需要这个函数？]
+        * 1. **单元测试**: GTest 在同一进程运行多个测试用例。Test A 结束后必须彻底清理环境，
+        * 否则 Test B 调用 Create() 时会报错。
+        * 2. **软重启**: 服务端程序可能需要“不退进程、重载插件”。Destroy() 提供了这个能力。
+        * 3. **确定性析构**: 依赖 C++ 静态变量析构顺序是不安全的（Static De-initialization Order Fiasco）。
+        * 显式调用 Destroy() 确保在 main() 退出前，所有业务线程、文件句柄都已安全释放。
+        */
+        static void Destroy();
+
         // --- 禁用拷贝/移动 ---
         // [受众：框架维护者]
         // PluginManager 是一个单例，其Pimpl指针和内部状态

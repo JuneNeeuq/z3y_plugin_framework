@@ -236,13 +236,11 @@ namespace z3y {
                 // 在 `try...catch`中执行异步回调
                 try {
                     task_to_run();
-                }
-                catch (const std::exception& e) {
+                } catch (const std::exception& e) {
                     // (v3 修复)
                     // 使用 OOB 处理器报告
                     ReportException(pimpl_.get(), e);
-                }
-                catch (...) {
+                } catch (...) {
                     ReportUnknownException(pimpl_.get());
                 }
             }
@@ -340,8 +338,7 @@ namespace z3y {
             for (const auto& sub : it->second) {
                 if (sub.connection_type == ConnectionType::kDirect) {
                     direct_calls.push_back(sub.callback);
-                }
-                else {
+                } else {
                     queued_calls.push_back(sub.callback);
                 }
             }
@@ -356,11 +353,9 @@ namespace z3y {
             // [核心] (OOB 异常处理)
             try {
                 cb(*e_ptr);
-            }
-            catch (const std::exception& e) {
+            } catch (const std::exception& e) {
                 ReportException(pimpl_.get(), e);
-            }
-            catch (...) {
+            } catch (...) {
                 ReportUnknownException(pimpl_.get());
             }
         }
@@ -460,8 +455,7 @@ namespace z3y {
             for (const auto& sub : event_it->second) {
                 if (sub.connection_type == ConnectionType::kDirect) {
                     direct_calls.push_back(sub.callback);
-                }
-                else {
+                } else {
                     queued_calls.push_back(sub.callback);
                 }
             }
@@ -471,11 +465,9 @@ namespace z3y {
         for (const auto& cb : direct_calls) {
             try {
                 cb(*e_ptr);
-            }
-            catch (const std::exception& e) {
+            } catch (const std::exception& e) {
                 ReportException(pimpl_.get(), e);
-            }
-            catch (...) {
+            } catch (...) {
                 ReportUnknownException(pimpl_.get());
             }
         }
@@ -536,8 +528,7 @@ namespace z3y {
                 }
             }
 
-        }
-        else {
+        } else {
             // --- 2. 清理特定发布者订阅 ---
 
             // 使用 sender_key 查找)

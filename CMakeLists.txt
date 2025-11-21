@@ -11,9 +11,10 @@
 #
 # [核心职责]
 # 1. **环境标准化**: 强制 C++17 标准，统一 MSVC 编码 (UTF-8) 和运行时库 (MD)。
-# 2. **依赖管理**: 集中管理第三方库 (spdlog, json)，并解决它们的安装导出问题。
+# 2. **依赖管理**: 集中管理第三方库 (spdlog, json, gtest)，并解决它们的安装导出问题。
 # 3. **路径规划**: 定义清晰的 bin/lib 输出目录，确保宿主能直接加载插件。
-# 4. **SDK 导出**: 生成 CMake 配置文件，让其他项目能通过 `find_package` 使用本框架。
+# 4. **质量保障**: 集成 Google Test 框架，管理单元测试和集成测试。
+# 5. **SDK 导出**: 生成 CMake 配置文件，让其他项目能通过 `find_package` 使用本框架。
 #
 
 # ==============================================================================
@@ -117,7 +118,6 @@ install(TARGETS spdlog
 # ==============================================================================
 
 # 架构后缀 (例如 _x64)
-# 用于在同一个目录中区分 32位 和 64位 的二进制文件 (虽然现在很少用 32位了)
 if (CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(Z3Y_ARCH_SUFFIX "_x64")
 else ()
@@ -134,7 +134,6 @@ set(CMAKE_RELWITHDEBINFO_POSTFIX "")
 include(GNUInstallDirs)
 
 # 设置默认安装前缀 (Install Prefix)
-# 如果用户没有通过 -DCMAKE_INSTALL_PREFIX 指定，则默认为构建目录下的 sdk 文件夹。
 if (NOT CMAKE_INSTALL_PREFIX)
   set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/sdk")
 endif ()
@@ -142,8 +141,7 @@ message(STATUS "SDK Install prefix set to: ${CMAKE_INSTALL_PREFIX}")
 
 # [开发体验优化] 设置构建输出目录
 # 我们强制将所有生成物 (DLL, LIB, EXE) 输出到同一个 bin 目录。
-# 这样，在 IDE (VS/CLion) 中按 F5 调试时，宿主程序 (EXE) 能直接找到旁边的插件 (DLL)，
-# 无需配置复杂的 PATH 环境变量。
+# 这样，在 IDE (VS/CLion) 中按 F5 调试时，宿主程序 (EXE) 能直接找到旁边的插件 (DLL)。
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib) # .lib 文件
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin) # .dll / .so 文件
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin) # .exe 文件
@@ -168,20 +166,46 @@ add_subdirectory(src/plugin_demo_module_events)
 add_subdirectory(src/plugin_demo_module_introspection)
 
 # 5.4 辅助工具
-add_subdirectory(tools/tool_log_benchmark) # 日志性能压测工具
+add_subdirectory(tools/tool_log_benchmark)  # 日志性能压测工具
 
 # 5.5 宿主程序
 add_subdirectory(src/host_console_demo)   # 控制台宿主示例
 
 # ==============================================================================
-# 6. SDK 生成与导出
+# 6. 单元测试与集成测试 (Google Test)
+# ==============================================================================
+# [设计思想]
+# 引入 Google Test (GTest) 框架以支持自动化的功能验证。
+# 这与 tool_log_benchmark (压测) 互为补充：GTest 负责功能的正确性，压测负责性能的极限。
+
+# [重要] 强制 GTest 使用共享运行时库 (/MD)
+# GTest 默认在 Windows 上可能使用静态运行时 (/MT)。如果这里不强制覆盖，
+# 在链接阶段会与我们的框架 (使用 /MD) 发生严重冲突 (LNK2038 错误)。
+set(gtest_force_shared_crt ON CACHE BOOL "Force gtest to use the shared C runtime" FORCE)
+
+# 引入 GTest 源码
+# 假设用户已将 GTest 解压至 third_party/googletest-1.17.0
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest-1.17.0/CMakeLists.txt")
+    add_subdirectory(third_party/googletest-1.17.0)
+    
+    # 开启 CTest 测试支持
+    # 这会在构建目录生成测试配置文件，允许通过 `ctest` 命令运行所有测试。
+    enable_testing()
+
+    # 添加测试工程根目录
+    # 这里包含了基于 Fixture 的分层测试架构 (tests/common, tests/integration)
+    add_subdirectory(tests)
+else()
+    message(WARNING "GoogleTest not found in third_party/googletest-1.17.0. Unit tests will be skipped.")
+endif()
+
+# ==============================================================================
+# 7. SDK 生成与导出
 # ==============================================================================
 
 # 生成并安装 CMake 配置文件
 # 这使得第三方开发者可以在他们的 CMakeLists.txt 中使用：
 # find_package(z3y_plugin_framework REQUIRED)
-# target_link_libraries(my_app PRIVATE z3y_plugin_framework::z3y_plugin_manager)
-
 install(
   EXPORT z3y_plugin_frameworkTargets
   FILE z3y_plugin_frameworkTargets.cmake
@@ -190,7 +214,6 @@ install(
 )
 
 # (可选) 生成版本配置文件 (z3y_plugin_frameworkConfigVersion.cmake)
-# 这样 find_package 就可以检查版本兼容性了
 write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/z3y_plugin_frameworkConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}

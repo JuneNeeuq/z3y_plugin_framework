@@ -72,14 +72,12 @@ namespace z3y {
                     err == InstanceError::kSuccess) {
                     logger_ = logger; // 缓存可选的日志服务
                     logger_->Log("DemoEventSender Service Initialized (Initialize() called).");
-                }
-                else {
+                } else {
                     // 日志服务不可用，打印到 cerr
                     std::cerr << "DemoEventSender::Initialize failed to get logger."
                         << std::endl;
                 }
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 // [受众：框架维护者]
                 // 理论上 TryGet...不会抛出异常，但捕获总是一个好习惯。
                 std::cerr << "DemoEventSender::Initialize exception: " << e.what()
@@ -120,8 +118,7 @@ namespace z3y {
                     bus_ = z3y::GetService<IEventBus>(clsid::kEventBus);
                 }
                 return true;
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 // [健壮性]
                 // 如果获取失败，打印到 cerr
                 // (因为 logger_ 可能就是失败的那个)

@@ -129,8 +129,7 @@ namespace z3y {
                 if (!bus_) {
                     bus_ = z3y::GetService<IEventBus>(clsid::kEventBus);
                 }
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 std::cerr << "DemoEventsFeatures failed to get services in RunTest: "
                     << e.what() << std::endl;
                 return;
@@ -222,8 +221,7 @@ namespace z3y {
                 sender_service->FireGlobal();  // 触发第二次
                 if (unsub_event_received_) {
                     logger_->Log("   ...[FAIL] Received event *after* granular unsub!");
-                }
-                else {
+                } else {
                     logger_->Log("   ...Success: Did not receive event after granular unsub.");
                 }
 
@@ -265,14 +263,12 @@ namespace z3y {
                     logger_->Log(
                         "   ...[FAIL] Received event *after* ScopedConnection left "
                         "scope!");
-                }
-                else {
+                } else {
                     logger_->Log(
                         "   ...Success: Did not receive event after RAII unsubscribe.");
                 }
 
-            }
-            catch (const z3y::PluginException& e) {
+            } catch (const z3y::PluginException& e) {
                 // (捕获 `GetService<IDemoEventSender>` 可能的失败)
                 logger_->Log("[EventDemo] [FAIL] " + std::string(e.what()));
             }

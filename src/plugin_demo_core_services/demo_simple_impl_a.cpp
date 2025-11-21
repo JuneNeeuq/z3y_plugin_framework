@@ -73,8 +73,7 @@ namespace z3y {
                     err == InstanceError::kSuccess) {
                     // 首次使用时获取服务，并缓存到成员变量中
                     logger_ = logger;
-                }
-                else if (err != InstanceError::kSuccess) {
+                } else if (err != InstanceError::kSuccess) {
                     // 如果日志服务不存在，打印到 cerr
                     std::cerr << "  [DemoSimpleImplA] Failed to get logger: "
                         << ResultToString(err) << std::endl;
