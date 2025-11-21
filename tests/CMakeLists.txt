@@ -8,7 +8,7 @@ add_executable(z3y_integration_tests
     integration/test_spdlog_plugin.cpp
     # 以后有新测试，直接加在这里
     # integration/test_network_plugin.cpp 
-)
+ "integration/test_config_plugin.cpp")
 
 # 2. 注入构建环境信息 (关键步骤)
 #    这允许 C++ 代码知道当前的架构后缀 (_x64/_x86) 和构建模式 (Debug/Release)

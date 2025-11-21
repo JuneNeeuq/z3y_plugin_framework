@@ -1,4 +1,4 @@
-#
+﻿#
 # CMakeLists.txt (src/interfaces_core)
 # @brief 定义 'interfaces_core' 库 (生产级核心插件SDK)。
 # @author Yue Liu
@@ -28,6 +28,8 @@ target_link_libraries(
   z3y_plugin_manager
   # 依赖 spdlog (为了 fmt 格式化库，宏实现需要它)
   spdlog::spdlog
+  # 依赖 nlohmann_json (配置接口需要)
+  nlohmann_json::nlohmann_json
 )
 
 # 4. 安装接口头文件
