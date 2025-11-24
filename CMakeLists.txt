@@ -156,7 +156,10 @@ add_subdirectory(src/interfaces_core)     # 核心接口定义 (ABI)
 
 # 5.2 基础服务插件
 add_subdirectory(src/plugin_spdlog_logger) # 日志服务实现
-add_subdirectory(src/plugin_config_manager)
+add_subdirectory(src/plugin_config_manager) # 配置服务
+
+add_subdirectory(src/interfaces_profiler) # 性能分析工具
+add_subdirectory(src/plugin_profiler)
 
 # 5.3 演示/示例代码 (Demo & Examples)
 add_subdirectory(src/interfaces_demo)

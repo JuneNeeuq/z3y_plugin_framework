@@ -1,0 +1,31 @@
+﻿{
+  "settings": {
+    "_comment_global": "全局性能分析开关。设为 false 时，性能损耗接近零。",
+    "global_enable": true,
+
+    "_comment_threshold": "报警阈值 (毫秒)。仅当函数耗时超过此值时，才会向 Logger 输出警告日志。",
+    "alert_threshold_ms": 30.0,
+
+    "_comment_console": "开发调试用。是否在控制台同步打印性能数据 (严重影响性能，生产环境禁用)。",
+    "enable_console_log": false,
+
+    "_comment_tracing": "是否启用 Chrome Tracing 文件输出。开启后会生成 trace.json。",
+    "enable_tracing": true,
+
+    "trace_file": "logs/trace.json",
+    "max_trace_file_mb": 500,
+    "max_queue_size": 2048,
+
+    "_comment_rules": "针对特定模块的覆盖规则。matcher 为前缀匹配。",
+    "rules": [
+      {
+        "matcher": "Algo.DeepLearning",
+        "threshold_ms": 200.0
+      },
+      {
+        "matcher": "Utils.Math",
+        "threshold_ms": 1.0
+      }
+    ]
+  }
+}

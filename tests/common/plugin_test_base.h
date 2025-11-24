@@ -49,6 +49,7 @@ protected:
      */
     void SetUp() override {
         std::cout << "[TestBase] SetUp: Creating PluginManager..." << std::endl;
+        z3y::PluginManager::Destroy();
         // 1. 创建全新的 PluginManager 实例
         //    设计意图：确保每个测试都在一个干净的框架环境中运行，避免上一个测试的残留状态（如单例）干扰当前测试。
         manager_ = z3y::PluginManager::Create();

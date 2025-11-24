@@ -8,7 +8,15 @@ add_executable(z3y_integration_tests
     integration/test_spdlog_plugin.cpp
     # 以后有新测试，直接加在这里
     # integration/test_network_plugin.cpp 
- "integration/test_config_plugin.cpp")
+    "integration/test_config_plugin.cpp"
+    "integration/test_profiler_plugin.cpp"
+    "integration/test_profiler_plugin.cpp"
+    "integration/test_event_system.cpp"
+    "integration/test_service_locator.cpp"
+    "integration/test_type_system.cpp"
+    "integration/test_introspection.cpp"
+    "integration/test_loader_robustness.cpp"
+    "integration/test_concurrency.cpp")
 
 # 2. 注入构建环境信息 (关键步骤)
 #    这允许 C++ 代码知道当前的架构后缀 (_x64/_x86) 和构建模式 (Debug/Release)
@@ -32,6 +40,7 @@ target_link_libraries(z3y_integration_tests
     z3y_plugin_manager     # 被测核心
     interfaces_core        # 被测接口
     interfaces_demo        # Demo 接口 (如果需要)
+    interfaces_profiler    # 性能分析工具
 )
 
 # 5. [重要] 将测试程序安装到 bin 目录
