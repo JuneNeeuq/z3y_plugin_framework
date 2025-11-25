@@ -20,23 +20,6 @@
  * @author Yue Liu
  * @date 2025-07-13
  * @copyright Copyright (c) 2025 Yue Liu
- *
- * @details
- * [受众：框架维护者]
- *
- * 此文件是 `z3y_plugin_manager` 库的一部分。
- * 它提供了 `framework/connection.h` 中声明的
- * `Connection` 类非内联成员函数的定义。
- *
- * [设计思想：Pimpl 与 ABI]
- * `Connection` 类本身 *不是* Pimpl 模式，但它的实现被分离到 `.cpp` 文件中，
- * 是为了 *隐藏* `framework/connection.h` (公共头文件)
- * 对 `framework/i_event_bus.h` 完整定义的依赖，
- * 从而打破头文件循环。
- *
- * `connection.h` 只需前向声明 `IEventBus`。
- * 此 `.cpp` 文件可以安全地 `#include "framework/i_event_bus.h"`
- * 来获取 `IEventBus::Unsubscribe` 的完整定义。
  */
 #include "framework/connection.h"
 #include "framework/i_event_bus.h"  // [核心] 包含 IEventBus 完整定义
@@ -45,11 +28,6 @@ namespace z3y {
 
     /**
      * @brief Connection 私有构造函数的定义 (实现)。
-     *
-     * [受众：框架维护者]
-     *
-     * 此函数由 `PluginManager` (作为 `friend`) 在 `Subscribe...Impl` 中调用。
-     * 它初始化所有成员变量， 并将 `is_connected_` 标记为 `true`。
      */
     Connection::Connection(std::weak_ptr<IEventBus> bus,
         std::weak_ptr<void> subscriber, EventId event_id,
@@ -60,26 +38,49 @@ namespace z3y {
         sender_key_(std::move(sender_key)),
         is_connected_(true)  // 标记为已连接
     {
-        // 构造函数体为空
+    }
+
+    // --- [新增] 手动实现移动语义 ---
+
+    Connection::Connection(Connection&& other) noexcept
+        : bus_(std::move(other.bus_)),
+        subscriber_(std::move(other.subscriber_)),
+        event_id_(other.event_id_),
+        sender_key_(std::move(other.sender_key_)) {
+        // [核心] 原子地接管状态，并将源对象标记为断开
+        // exchange 返回旧值 (即源对象的连接状态)，并将其设为 false
+        bool was_connected = other.is_connected_.exchange(false);
+        is_connected_.store(was_connected);
+    }
+
+    Connection& Connection::operator=(Connection&& other) noexcept {
+        if (this != &other) {
+            // 1. 先断开当前的连接 (如果已连接)
+            Disconnect();
+
+            // 2. 转移资源所有权
+            bus_ = std::move(other.bus_);
+            subscriber_ = std::move(other.subscriber_);
+            event_id_ = other.event_id_;
+            sender_key_ = std::move(other.sender_key_);
+
+            // 3. [核心] 原子转移连接状态
+            bool was_connected = other.is_connected_.exchange(false);
+            is_connected_.store(was_connected);
+        }
+        return *this;
     }
 
     /**
      * @brief [API] 手动断开此订阅连接。
-     *
-     * [受众：框架维护者]
-     *
-     * `Disconnect` 的核心逻辑：
-     * 1. 检查 `is_connected_` 标志。
-     * 2. 尝试 `lock()` `bus_` (IEventBus) 和 `subscriber_` (订阅者) 的 `weak_ptr`。
-     * 3. 如果两者都 *仍然存活*，则调用 `strong_bus->Unsubscribe(...)` (内部的、特定于 Connection 的版本)，
-     * 传入 `event_id_` 和 `sender_key_`。
      */
     void Connection::Disconnect() {
-        if (!is_connected_) {
-            return; // 已经断开
+        // [核心优化] 使用 exchange 保证 CAS (Compare-And-Swap) 原子性
+        // 只有当 is_connected_ 原本为 true 时，exchange 才返回 true 并将其置为 false。
+        // 如果多个线程同时调用，只有一个线程会进入 if 块。
+        if (!is_connected_.exchange(false)) {
+            return; // 已经断开，直接返回
         }
-        // 立即标记为断开，防止重入
-        is_connected_ = false;
 
         // 1. 尝试提升 EventBus
         if (auto strong_bus = bus_.lock()) {
@@ -92,19 +93,15 @@ namespace z3y {
             }
         }
         // 如果 bus_ 或 subscriber_ 已经过期，
-        // 我们无需执行任何操作，
-        // 因为 Lazy GC (在 event_bus_impl.cpp 中)
-        // 会在下一次 Fire 时自动清理这个订阅。
+        // 我们无需执行任何操作，Lazy GC 会处理。
     }
 
     /**
      * @brief [API] 检查此连接句柄是否仍然有效。
      */
     bool Connection::IsConnected() const {
-        // `is_connected_`
-        // 标志必须为 true，且 bus 和 subscriber
-        // 都必须尚未过期。
-        return is_connected_ && !bus_.expired() && !subscriber_.expired();
+        // 使用 load() 原子读取状态
+        return is_connected_.load() && !bus_.expired() && !subscriber_.expired();
     }
 
 }  // namespace z3y

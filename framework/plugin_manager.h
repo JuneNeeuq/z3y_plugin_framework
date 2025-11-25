@@ -375,6 +375,13 @@ namespace z3y {
         [[nodiscard]] bool LoadPluginInternal(const std::filesystem::path& file_path,
             const std::string& init_func_name,
             std::string& out_error_message);
+        /**
+         * @brief [跨平台的文件检查函数]
+         * 检查文件是否是一个有效的插件 (即 .dll .so .dylib文件)。
+         * @param[in] path 文件路径。
+         * @return `true` 如果是动态库文件，`false` 则不是。
+         */
+        [[nodiscard]] bool IsPluginFile(const std::filesystem::path& path) const;
         // 事件循环线程函数
         void EventLoop();
         // 插件加载失败时的事务回滚
@@ -389,13 +396,6 @@ namespace z3y {
             const char* func_name);
         void PlatformUnloadLibrary(LibHandle handle);
         void PlatformSpecificLibraryUnload();
-        [[nodiscard]] bool PlatformIsPluginFile(const std::filesystem::path& path);
-        // 平台特定的错误格式化
-#ifdef _WIN32
-        [[nodiscard]] std::string PlatformFormatError(unsigned long error_id);
-#else
-        [[nodiscard]] std::string PlatformGetError();
-#endif
 
     public:
         // [受众：框架维护者]

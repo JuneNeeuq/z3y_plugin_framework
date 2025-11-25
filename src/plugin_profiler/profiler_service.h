@@ -187,11 +187,6 @@ namespace z3y::plugins::profiler {
         void TraceFlowToBuffer(const char* name, uint64_t flow_id, char phase, size_t tid);
 
         /**
-         * @brief [关键] 跨平台路径转码 (解决 Windows 中文路径问题)
-         */
-        static std::filesystem::path Utf8ToPath(const std::string& path_str);
-
-        /**
          * @brief JSON 字符串转义辅助函数。
          * @details 将输入字符串中的特殊字符转义，写入输出迭代器。
          */

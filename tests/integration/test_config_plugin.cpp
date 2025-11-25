@@ -140,7 +140,7 @@ protected:
 
         // 4. 初始化服务
         // [关键] InitializeService 接口契约要求传入 UTF-8 编码的字符串。
-        std::string root_utf8 = PathToUtf8(test_root_);
+        std::string root_utf8 = z3y::utils::PathToUtf8(test_root_);
         ASSERT_TRUE(config_svc_->InitializeService(root_utf8));
     }
 
@@ -156,22 +156,6 @@ protected:
     }
 
     // --- [辅助工具] 编码转换 (解决 Windows 中文路径乱码问题) ---
-
-    /**
-     * @brief 将 path 对象转为 UTF-8 字符串 (传给 Service API 使用)
-     */
-    std::string PathToUtf8(const std::filesystem::path& path) {
-#ifdef _WIN32
-        std::wstring wstr = path.wstring();
-        if (wstr.empty()) return "";
-        int size = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
-        std::string str(size, 0);
-        WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &str[0], size, NULL, NULL);
-        return str;
-#else
-        return path.string();
-#endif
-    }
 
     /**
      * @brief 将 UTF-8 字符串 (Domain) 转为本地 path 对象 (测试代码访问磁盘使用)

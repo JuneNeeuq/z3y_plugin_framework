@@ -41,6 +41,7 @@
 #include <optional>    // C++17
 #include <shared_mutex>  // C++17
 #include <system_error>  // (用于 std::call_once)
+#include "framework/z3y_utils.h"
 
  // 平台特定的 dlopen/dlerror
 #ifndef _WIN32
@@ -647,11 +648,7 @@ namespace z3y {
 #endif
 
         if (!lib_handle) {
-#ifdef _WIN32
-            std::string platform_error = PlatformFormatError(error_id);
-#else
-            std::string platform_error = PlatformGetError();
-#endif
+            std::string platform_error = z3y::utils::GetLastSystemError();
             out_error_message = "PlatformLoadLibrary failed: " + platform_error;
             if (bus)
                 bus->FireGlobal<event::PluginLoadFailureEvent>(path_str,
@@ -731,6 +728,16 @@ namespace z3y {
         }
     }
 
+    // 统一的文件检查实现
+    bool PluginManager::IsPluginFile(const std::filesystem::path& path) const {
+        // 1. 必须是普通文件
+        if (!std::filesystem::is_regular_file(path)) {
+            return false;
+        }
+        // 2. 检查后缀 (利用工具库获取当前平台的后缀)
+        return path.extension() == z3y::utils::GetSharedLibraryExtension();
+    }
+
     std::vector<std::string> PluginManager::LoadPluginsFromDirectory(
         const std::filesystem::path& dir, bool recursive,
         const std::string& init_func_name) {
@@ -747,7 +754,7 @@ namespace z3y {
             // 递归迭代
             for (const auto& entry :
                 std::filesystem::recursive_directory_iterator(dir)) {
-                if (PlatformIsPluginFile(entry.path())) {
+                if (IsPluginFile(entry.path())) {
                     error_message.clear();
                     if (!LoadPluginInternal(entry.path(), init_func_name, error_message)) {
                         load_failures.push_back("Failed to load '" + entry.path().string() +
@@ -758,7 +765,7 @@ namespace z3y {
         } else {
             // 非递归迭代
             for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-                if (PlatformIsPluginFile(entry.path())) {
+                if (IsPluginFile(entry.path())) {
                     error_message.clear();
                     if (!LoadPluginInternal(entry.path(), init_func_name, error_message)) {
                         load_failures.push_back("Failed to load '" + entry.path().string() +
@@ -774,7 +781,7 @@ namespace z3y {
         std::string& out_error_message,
         const std::string& init_func_name) {
 
-        if (!PlatformIsPluginFile(file_path)) {
+        if (!IsPluginFile(file_path)) {
             out_error_message =
                 "File is not a valid plugin file (e.g., wrong extension, or not a "
                 "file).";

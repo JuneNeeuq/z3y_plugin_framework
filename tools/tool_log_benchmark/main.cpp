@@ -71,18 +71,6 @@ std::filesystem::path GetExePath() {
 #endif
 }
 
-std::string PathToUtf8(const std::filesystem::path& path) {
-#ifdef _WIN32
-    std::wstring wstr = path.wstring();
-    if (wstr.empty()) return "";
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
-    std::string strTo(size_needed, 0);
-    WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
-    return strTo;
-#else
-    return path.string();
-#endif
-}
 // ----------------------------------------------
 
 void PrintSeparator(const std::string& title) {
@@ -204,13 +192,13 @@ int main(int argc, char* argv[]) {
         std::filesystem::path exe_path = GetExePath();
         std::filesystem::path exe_dir = exe_path.parent_path();
 
-        std::cout << "[Init] 插件目录: " << PathToUtf8(exe_dir) << std::endl;
+        std::cout << "[Init] 插件目录: " << z3y::utils::PathToUtf8(exe_dir) << std::endl;
         manager->LoadPluginsFromDirectory(exe_dir, true);
 
         auto log_mgr = z3y::GetDefaultService<ILogManagerService>();
 
-        std::string config_path = PathToUtf8(exe_dir / "benchmark_config.json");
-        std::string log_root = PathToUtf8(exe_dir / "bench_logs"); // 日志单独放一个文件夹
+        std::string config_path = z3y::utils::PathToUtf8(exe_dir / "benchmark_config.json");
+        std::string log_root = z3y::utils::PathToUtf8(exe_dir / "bench_logs"); // 日志单独放一个文件夹
 
         if (!log_mgr->InitializeService(config_path, log_root)) {
             std::cerr << "[Fatal] 初始化失败！请检查 benchmark_config.json" << std::endl;

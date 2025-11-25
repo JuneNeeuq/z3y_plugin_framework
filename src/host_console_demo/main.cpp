@@ -142,12 +142,9 @@ void HostExceptionHandler(const std::exception& e) {
  * @brief [宿主] 主程序入口点。
  */
 int main(int argc, char* argv[]) {
-#ifdef _WIN32
-    // 设置控制台输出为 UTF-8，
-    // 解决中文乱码
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-#endif
+    // 1. 一键开启控制台 UTF-8 支持 (跨平台)
+    z3y::utils::EnableUtf8Console();
+
     std::cout << "--- z3y C++ Plugin Framework Host Demo (Modular) ---"
         << std::endl;
 
@@ -166,10 +163,8 @@ int main(int argc, char* argv[]) {
         host_listener->SubscribeToFrameworkEvents();
 
         // 5. 确定插件目录 (exe 所在目录)
-        std::filesystem::path exe_dir = ".";
-        if (argc > 0 && argv[0]) {
-            exe_dir = std::filesystem::path(argv[0]).parent_path();
-        }
+        std::filesystem::path exe_dir = z3y::utils::GetExecutableDir();
+
         std::cout << "\n[Host] Loading all plugins from: " << exe_dir.string()
             << std::endl;
 

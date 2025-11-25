@@ -117,19 +117,6 @@ namespace z3y::plugins::profiler {
         Shutdown();
     }
 
-    // [核心修复] 显式 UTF-8 转 WideChar，解决 Windows 中文路径问题
-    std::filesystem::path ProfilerService::Utf8ToPath(const std::string& path_str) {
-#ifdef _WIN32
-        if (path_str.empty()) return std::filesystem::path();
-        int size_needed = MultiByteToWideChar(CP_UTF8, 0, &path_str[0], (int)path_str.size(), NULL, 0);
-        std::wstring wstrTo(size_needed, 0);
-        MultiByteToWideChar(CP_UTF8, 0, &path_str[0], (int)path_str.size(), &wstrTo[0], size_needed);
-        return std::filesystem::path(wstrTo);
-#else
-        return std::filesystem::path(path_str);
-#endif
-    }
-
     void ProfilerService::Initialize() {
         auto mutable_config = std::make_shared<ProfilerConfig>();
 
@@ -352,7 +339,7 @@ namespace z3y::plugins::profiler {
 
         auto cfg = std::atomic_load(&config_ptr_);
         // 使用 Utf8ToPath 替代 u8path，解决 Windows 中文路径问题
-        auto fs_path = Utf8ToPath(cfg->trace_file);
+        auto fs_path = z3y::utils::Utf8ToPath(cfg->trace_file);
 
         if (fs_path.has_parent_path()) {
             std::error_code ec;

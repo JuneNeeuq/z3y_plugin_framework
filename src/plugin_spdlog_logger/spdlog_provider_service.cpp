@@ -58,23 +58,6 @@ namespace z3y {
 
             // --- 辅助函数 ---
 
-            // 跨平台路径转码
-            // 解决问题：spdlog 在 Windows 上默认使用 ANSI 编码打开文件，如果路径含中文且系统编码为 GBK，
-            // 而我们传入的是 UTF-8 字符串，会导致乱码或文件创建失败。
-            // 方案：将 UTF-8 转换为 wstring (Wide Char)，spdlog 会自动使用 _wfopen。
-            std::filesystem::path SpdlogProviderService::Utf8ToPath(const std::string& path_str) {
-#ifdef _WIN32
-                if (path_str.empty()) return std::filesystem::path();
-                int size_needed = MultiByteToWideChar(CP_UTF8, 0, &path_str[0], (int)path_str.size(), NULL, 0);
-                std::wstring wstrTo(size_needed, 0);
-                MultiByteToWideChar(CP_UTF8, 0, &path_str[0], (int)path_str.size(), &wstrTo[0], size_needed);
-                return std::filesystem::path(wstrTo);
-#else
-                // Linux/Mac 默认支持 UTF-8 路径
-                return std::filesystem::path(path_str);
-#endif
-            }
-
             spdlog::level::level_enum ToSpdlogLevel(LogLevel level) {
                 switch (level) {
                 case LogLevel::Trace: return spdlog::level::trace;
@@ -214,7 +197,7 @@ namespace z3y {
                 try {
                     // 使用 Utf8ToPath 将 UTF-8 路径转换为 std::filesystem::path
                     // 这样 std::ifstream 在 Windows 上会使用宽字符路径打开文件，支持中文。
-                    std::filesystem::path fs_config_path = Utf8ToPath(config_file_path);
+                    std::filesystem::path fs_config_path = z3y::utils::Utf8ToPath(config_file_path);
                     std::ifstream f(fs_config_path);
 
                     if (!f.is_open()) {
@@ -316,8 +299,8 @@ namespace z3y {
                 if (config.instance) return config.instance;
 
                 // 使用 Utf8ToPath 处理路径，确保在 Windows 上支持中文路径
-                std::filesystem::path p_root = Utf8ToPath(log_directory_);
-                std::filesystem::path p_base = Utf8ToPath(config.base_name);
+                std::filesystem::path p_root = z3y::utils::Utf8ToPath(log_directory_);
+                std::filesystem::path p_base = z3y::utils::Utf8ToPath(config.base_name);
                 std::filesystem::path full_path = p_root / p_base;
 
                 // 自动创建目录

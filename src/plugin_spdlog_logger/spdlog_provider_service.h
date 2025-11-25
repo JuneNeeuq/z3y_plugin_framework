@@ -156,9 +156,6 @@ namespace z3y {
                 // [内部] 检查是否有动态覆写规则适用于该 logger (无锁辅助函数)
                 void ApplyLevelOverrides_UNLOCKED(const std::string& name, std::shared_ptr<spdlog::logger> logger);
 
-                // [P0 Fix] 跨平台路径转码 (解决 Windows 中文路径问题)
-                static std::filesystem::path Utf8ToPath(const std::string& path_str);
-
                 std::mutex init_mutex_;           // 保护初始化过程
                 std::shared_mutex provider_lock_; // 读写锁，保护缓存和状态
 

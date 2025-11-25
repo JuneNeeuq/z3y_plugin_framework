@@ -72,4 +72,6 @@
 // 9. 服务定位器 (GetDefaultService 等)
 #include "framework/z3y_service_locator.h"
 
+#include "framework/z3y_utils.h"
+
 #endif  // Z3Y_FRAMEWORK_DEFINE_IMPL_H_

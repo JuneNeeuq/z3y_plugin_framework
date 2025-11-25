@@ -33,9 +33,6 @@
  * - **Fail-Fast**: JSON 解析失败时，标记为 Error 并停止处理，**绝对禁止**覆盖默认值，以保留事故现场。
  * - **Soft Dependency**: 尝试获取 LogManager。若失败，自动降级到控制台输出。
  * - **Snapshot Save**: `Save` 操作采用 "Copy-on-Write" 策略，仅在锁内拷贝内存，在锁外执行耗时 IO。
- *
- * 3. **演化注意事项**
- * - `AtomicWriteFile` 在 Windows 上使用了 `MoveFileEx`，这是为了保证断电数据一致性，请勿随意更改为普通 `rename`。
  */
 
 #pragma once
@@ -107,19 +104,12 @@ namespace z3y {
 
                 std::shared_ptr<FileContext> GetOrCreateContext(const std::string& domain);
                 nlohmann::json* GetJsonNode(nlohmann::json& root, const std::string& key, bool create_if_missing);
-                static std::filesystem::path Utf8ToPath(const std::string& path_str);
 
                 /**
                  * @brief 安全路径检查。
                  * @return true 如果路径合法 (非绝对路径，且不包含 "..")。
                  */
                 static bool IsSafePath(const std::string& domain);
-
-                /**
-                 * @brief 原子写入文件。
-                 * @details 保证断电安全 (MoveFileEx / fsync)。
-                 */
-                bool AtomicWriteFile(const std::filesystem::path& path, const std::string& content);
 
                 // 内部日志包装器 (处理 logger_ 为空的降级逻辑)
                 void LogInfo(const std::string& msg);

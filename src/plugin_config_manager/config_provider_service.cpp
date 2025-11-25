@@ -50,22 +50,10 @@ namespace z3y {
 
             // --- [辅助函数] ---
 
-            std::filesystem::path ConfigProviderService::Utf8ToPath(const std::string& path_str) {
-#ifdef _WIN32
-                if (path_str.empty()) return std::filesystem::path();
-                int size_needed = MultiByteToWideChar(CP_UTF8, 0, &path_str[0], (int)path_str.size(), NULL, 0);
-                std::wstring wstrTo(size_needed, 0);
-                MultiByteToWideChar(CP_UTF8, 0, &path_str[0], (int)path_str.size(), &wstrTo[0], size_needed);
-                return std::filesystem::path(wstrTo);
-#else
-                return std::filesystem::path(path_str);
-#endif
-            }
-
             bool ConfigProviderService::IsSafePath(const std::string& domain) {
                 if (domain.empty()) return false;
                 try {
-                    std::filesystem::path p(Utf8ToPath(domain));
+                    std::filesystem::path p(z3y::utils::Utf8ToPath(domain));
                     // 安全检查 1: 禁止绝对路径 (防止访问 /etc 或 C:/Windows)
                     if (p.is_absolute()) return false;
                     // 安全检查 2: 禁止路径遍历 (防止 ../../)
@@ -101,7 +89,7 @@ namespace z3y {
                 // 2. 初始化目录
                 root_dir_utf8_ = config_root_dir;
                 try {
-                    auto path = Utf8ToPath(root_dir_utf8_);
+                    auto path = z3y::utils::Utf8ToPath(root_dir_utf8_);
                     if (!std::filesystem::exists(path)) {
                         std::filesystem::create_directories(path);
                     }
@@ -143,67 +131,6 @@ namespace z3y {
                 }
             }
 
-            bool ConfigProviderService::AtomicWriteFile(const std::filesystem::path& path, const std::string& content) {
-                std::error_code ec;
-                std::filesystem::create_directories(path.parent_path(), ec);
-                if (ec) {
-                    LogError("Failed to create directory " + path.parent_path().string() + ": " + ec.message());
-                    return false;
-                }
-
-                std::filesystem::path tmp_path = path;
-                tmp_path += ".tmp";
-
-#ifdef _WIN32
-                FILE* fp = _wfopen(tmp_path.c_str(), L"wb");
-#else
-                FILE* fp = fopen(tmp_path.c_str(), "wb");
-#endif
-                if (!fp) {
-                    LogError("Failed to open temp file: " + tmp_path.string());
-                    return false;
-                }
-
-                size_t written = fwrite(content.data(), 1, content.size(), fp);
-                if (written != content.size()) {
-                    fclose(fp);
-                    std::filesystem::remove(tmp_path);
-                    LogError("Write incomplete (Disk full?): " + path.string());
-                    return false;
-                }
-
-                // 强制刷入物理介质
-                fflush(fp);
-#ifdef _WIN32
-                _commit(_fileno(fp));
-#else
-                fsync(fileno(fp));
-#endif
-                fclose(fp);
-
-#ifdef _WIN32
-                // Windows 原子移动且强制落盘 (关键安全步骤)
-                std::wstring w_src = tmp_path.wstring();
-                std::wstring w_dst = path.wstring();
-                if (MoveFileExW(w_src.c_str(), w_dst.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-                    return true;
-                } else {
-                    std::filesystem::remove(tmp_path);
-                    LogError("Atomic MoveFileEx failed (Code " + std::to_string(GetLastError()) + "): " + path.string());
-                    return false;
-                }
-#else
-                try {
-                    std::filesystem::rename(tmp_path, path);
-                    return true;
-                } catch (const std::exception& e) {
-                    std::filesystem::remove(tmp_path);
-                    LogError("Atomic rename failed: " + std::string(e.what()));
-                    return false;
-                }
-#endif
-            }
-
             std::shared_ptr<ConfigProviderService::FileContext>
                 ConfigProviderService::GetOrCreateContext(const std::string& domain) {
 
@@ -224,7 +151,7 @@ namespace z3y {
 
                 auto ctx = std::make_shared<FileContext>();
                 ctx->json_root = json::object();
-                ctx->file_path = Utf8ToPath(root_dir_utf8_) / Utf8ToPath(domain + ".json");
+                ctx->file_path = z3y::utils::Utf8ToPath(root_dir_utf8_) / z3y::utils::Utf8ToPath(domain + ".json");
                 domains_[domain] = ctx;
                 return ctx;
             }
@@ -351,7 +278,7 @@ namespace z3y {
                 // 耗时的序列化和磁盘写入在锁外进行
                 try {
                     std::string content = json_snapshot.dump(4, ' ', false);
-                    return AtomicWriteFile(target_path, content);
+                    return z3y::utils::AtomicWriteFile(target_path, content);
                 } catch (const std::exception& e) {
                     LogError("Save failed (Serialize Error): " + std::string(e.what()));
                     return false;

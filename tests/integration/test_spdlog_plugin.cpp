@@ -58,19 +58,6 @@ protected:
         ASSERT_TRUE(LoadPlugin("plugin_spdlog_logger"));
     }
 
-    std::string PathToUtf8(const std::filesystem::path& path) {
-#ifdef _WIN32
-        std::wstring wstr = path.wstring();
-        if (wstr.empty()) return "";
-        int size = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
-        std::string str(size, 0);
-        WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &str[0], size, NULL, NULL);
-        return str;
-#else
-        return path.string();
-#endif
-    }
-
     // [新增辅助函数] 自动生成测试用的配置文件
     // 解决 "运行目录下缺少 logger_config.json 导致测试失败" 的问题
     std::string GenerateTestConfig() {
@@ -162,8 +149,8 @@ TEST_F(SpdlogPluginTest, InitSuccessWithValidConfig) {
 
     // 1. [修复] 自动生成配置文件，不再依赖外部拷贝
     std::string config_file = GenerateTestConfig();
-    std::filesystem::path config_path = PathToUtf8(bin_dir_ / config_file);
-    std::filesystem::path log_root = PathToUtf8(bin_dir_ / "test_logs");
+    std::filesystem::path config_path = z3y::utils::PathToUtf8(bin_dir_ / config_file);
+    std::filesystem::path log_root = z3y::utils::PathToUtf8(bin_dir_ / "test_logs");
 
     // 2. 初始化
     // 预期：返回 true
@@ -192,7 +179,7 @@ TEST_F(SpdlogPluginTest, DynamicSetLevel_Persistence) {
     // 1. [修复] 先初始化系统 (必须步骤)
     // 如果不初始化，SetLevel 内部会直接 return，导致测试失败
     std::string config_file = GenerateTestConfig();
-    ASSERT_TRUE(log_mgr->InitializeService(PathToUtf8((bin_dir_ / config_file).string()), PathToUtf8((bin_dir_ / "logs").string())));
+    ASSERT_TRUE(log_mgr->InitializeService(z3y::utils::PathToUtf8((bin_dir_ / config_file).string()), z3y::utils::PathToUtf8((bin_dir_ / "logs").string())));
 
     // 2. 场景准备：获取一个 Logger "Network.Tcp"
     // 根据 GenerateTestConfig 中的配置，默认级别可能是 Trace (取决于 sink 配置)

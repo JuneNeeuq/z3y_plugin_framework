@@ -41,9 +41,125 @@
 #include <codecvt>  // 用于编码转换
 #include <locale>
 #include <string> 
+#include <cstdio>
+#include <cstring> // for strerror_r
+#include <cerrno>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+#include "framework/z3y_utils.h"
 
 namespace z3y {
+    namespace utils {
 
+        std::filesystem::path Utf8ToPath(const std::string& utf8_path) {
+            return std::filesystem::path(utf8_path);
+        }
+
+        std::string PathToUtf8(const std::filesystem::path& path) {
+            return path.string();
+        }
+
+        std::filesystem::path GetExecutablePath() {
+            char buffer[PATH_MAX];
+#ifdef __linux__
+            // Linux: 读取 /proc/self/exe 符号链接
+            ssize_t len = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+            if (len != -1) {
+                buffer[len] = '\0';
+                return std::filesystem::path(buffer);
+            }
+#elif defined(__APPLE__)
+            // macOS: 使用 _NSGetExecutablePath
+            uint32_t size = sizeof(buffer);
+            if (_NSGetExecutablePath(buffer, &size) == 0) {
+                // _NSGetExecutablePath 可能返回包含 .. 的路径，使用 canonical 解析为绝对路径
+                try {
+                    return std::filesystem::canonical(buffer);
+                } catch (...) {
+                    return std::filesystem::path(buffer);
+                }
+            } else {
+                // 如果 buffer 不够大，size 会被更新为所需大小
+                std::vector<char> dynamic_buf(size);
+                if (_NSGetExecutablePath(dynamic_buf.data(), &size) == 0) {
+                    try {
+                        return std::filesystem::canonical(dynamic_buf.data());
+                    } catch (...) {
+                        return std::filesystem::path(dynamic_buf.data());
+                    }
+                }
+            }
+#endif
+            return std::filesystem::path();
+        }
+
+        const char* GetSharedLibraryExtension() {
+#ifdef __APPLE__
+            return ".dylib";
+#else
+            return ".so";
+#endif
+        }
+
+        void EnableUtf8Console() {
+            // POSIX 通常不需要特殊设置
+        }
+
+        std::string GetLastSystemError() {
+            char buffer[256];
+            // 使用线程安全的 strerror_r
+#if (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE
+            if (strerror_r(errno, buffer, sizeof(buffer)) == 0) {
+                return std::string(buffer);
+            }
+#else
+        // GNU version returns char*
+            char* msg = strerror_r(errno, buffer, sizeof(buffer));
+            if (msg) return std::string(msg);
+#endif
+            return "Unknown system error";
+        }
+
+        bool AtomicWriteFile(const std::filesystem::path& path, const std::string& content) {
+            std::filesystem::path tmp_path = path;
+            tmp_path += ".tmp";
+
+            FILE* fp = fopen(tmp_path.c_str(), "wb");
+            if (!fp) return false;
+
+            size_t written = fwrite(content.data(), 1, content.size(), fp);
+            if (written != content.size()) {
+                fclose(fp);
+                std::filesystem::remove(tmp_path);
+                return false;
+            }
+
+            fflush(fp);
+            fsync(fileno(fp)); // 强制刷盘
+            fclose(fp);
+
+            // 原子移动 (POSIX rename 是原子的)
+            if (rename(tmp_path.c_str(), path.c_str()) != 0) {
+                std::filesystem::remove(tmp_path);
+                return false;
+            }
+
+            // 对父目录执行 fsync，确保 rename 操作持久化
+            std::filesystem::path parent = path.parent_path();
+            int dir_fd = open(parent.c_str(), O_RDONLY | O_DIRECTORY);
+            if (dir_fd != -1) {
+                fsync(dir_fd);
+                close(dir_fd);
+            }
+
+            return false;
+        }
+
+    } // namespace utils
+} // namespace z3y
+
+namespace z3y {
     namespace {
         /**
          * @brief [内部] 将系统本地编码 (dlerror 返回的) 转换为 UTF-8。
@@ -105,21 +221,6 @@ namespace z3y {
     }
 
     /**
-     * @brief [平台实现-POSIX]
-     * 检查文件是否是一个有效的插件 (即 .so 或 .dylib 文件)。
-     * @param[in] path 文件路径。
-     * @return `true` 如果是 .so 或 .dylib 文件，`false` 则不是。
-     */
-    bool PluginManager::PlatformIsPluginFile(const std::filesystem::path& path) {
-        if (!std::filesystem::is_regular_file(path)) {
-            return false;
-        }
-        const auto extension = path.extension();
-        return (extension == ".so" ||  // Linux
-            extension == ".dylib");  // macOS
-    }
-
-    /**
      * @brief [平台实现-POSIX] 加载一个 .so/.dylib。
      * @param[in] path 库的路径 (`std::filesystem::path`
      * 自动处理 UTF-8)。
@@ -152,26 +253,6 @@ namespace z3y {
         // 在调用 dlsym 之前清除旧的 dlerror 状态
         (void)dlerror();
         return ::dlsym(handle, func_name);
-    }
-
-    /**
-     * @brief [平台实现-POSIX] 卸载一个库。
-     * @param[in] handle `void*` 句柄。
-     */
-    void PluginManager::PlatformUnloadLibrary(LibHandle handle) { ::dlclose(handle); }
-
-    /**
-     * @brief [平台实现-POSIX] 获取 `dlerror()` 返回的错误信息，并将其转换为 UTF-8。
-     *
-     * @return UTF-8 编码的 `std::string` 错误信息。
-     */
-    std::string PluginManager::PlatformGetError() {
-        const char* err_str = ::dlerror();
-        if (err_str) {
-            // 返回 UTF-8 编码的字符串， 而不是原始的 locale 字符串
-            return LocaleToUtf8(err_str);
-        }
-        return "Unknown POSIX dynamic library error";
     }
 
 }  // namespace z3y

@@ -43,6 +43,7 @@
 #define Z3Y_FRAMEWORK_CONNECTION_H_
 
 #include <memory>  // 用于 std::weak_ptr, std::shared_ptr
+#include <atomic>  // [新增] 用于 std::atomic
 #include "framework/class_id.h"         // 依赖 EventId
 #include "framework/z3y_framework_api.h"  // Z3Y_FRAMEWORK_API 导出
 
@@ -95,8 +96,11 @@ namespace z3y {
         // --- [受众：框架维护者] 移动语义 ---
         Connection(const Connection&) = delete;
         Connection& operator=(const Connection&) = delete;
-        Connection(Connection&&) = default;
-        Connection& operator=(Connection&&) = default;
+
+        // [修改] 必须手动实现移动构造和赋值，不能使用 default
+        // 因为 std::atomic 不可移动，我们需要手动转移其状态
+        Connection(Connection&& other) noexcept;
+        Connection& operator=(Connection&& other) noexcept;
 
     private:
         // [受众：框架维护者]
@@ -119,7 +123,9 @@ namespace z3y {
         std::weak_ptr<void> subscriber_;
         EventId event_id_ = 0;
         std::weak_ptr<void> sender_key_;
-        bool is_connected_ = false;
+
+        // [修改] 使用原子变量保证 Disconnect 的线程安全
+        std::atomic<bool> is_connected_{ false };
     };
 
     /**

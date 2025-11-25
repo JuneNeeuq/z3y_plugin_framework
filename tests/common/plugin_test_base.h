@@ -55,9 +55,7 @@ protected:
         manager_ = z3y::PluginManager::Create();
 
         // 2. 定位构建目录 (bin)
-        //    设计意图：测试可执行文件通常和插件 DLL 生成在同一个目录 (bin)。
-        //    std::filesystem::current_path() 通常就是这个 bin 目录。
-        bin_dir_ = std::filesystem::current_path();
+        bin_dir_ = z3y::utils::GetExecutableDir();
         std::cout << "[TestBase] SetUp: Done." << std::endl;
     }
 
@@ -107,11 +105,7 @@ protected:
 #endif
 
         // 5. 扩展名
-#ifdef _WIN32
-        ss << ".dll";
-#else
-        ss << ".so";
-#endif
+        ss << z3y::utils::GetSharedLibraryExtension();
 
         std::string filename = ss.str();
         std::filesystem::path path = bin_dir_ / filename;
@@ -120,12 +114,7 @@ protected:
         if (!std::filesystem::exists(path)) {
             // 尝试构建一个不带任何后缀的原始路径
             std::filesystem::path fallback_path = bin_dir_ / (plugin_base_name +
-#ifdef _WIN32
-                ".dll"
-#else
-                ".so"
-#endif
-                );
+                z3y::utils::GetSharedLibraryExtension());
 
             if (std::filesystem::exists(fallback_path)) {
                 std::cout << "[TestBase] Standard path not found: " << filename

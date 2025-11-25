@@ -24,22 +24,9 @@
 #include "framework/z3y_service_locator.h"
 #include "interfaces_profiler/i_profiler_service.h"
 
- // --- 编译期辅助函数 ---
-namespace z3y::helpers {
-    /**
-     * @brief [编译期] 从文件路径中提取文件名。
-     * @details 用于在编译阶段计算 `__FILE__` 的文件名部分，避免运行时的字符串处理开销。
-     */
-    constexpr const char* GetFileNameFromPath(const char* path) {
-        const char* file = path;
-        while (*path) { if (*path == '/' || *path == '\\') file = path + 1; path++; }
-        return file;
-    }
-}
-
 // 如果未定义模块名，默认使用当前源文件名
 #ifndef Z3Y_PROFILE_MODULE_NAME
-#define Z3Y_PROFILE_MODULE_NAME z3y::helpers::GetFileNameFromPath(__FILE__)
+#define Z3Y_PROFILE_MODULE_NAME z3y::utils::GetFileNameFromPath(__FILE__)
 #endif
 
 // 定义栈上 Payload 缓冲区大小 (字节)。超过此大小将被截断。
@@ -230,7 +217,7 @@ namespace z3y::profiler {
 #define Z3Y_PROF_VAR(line) Z3Y_PROF_CAT(z3y_prof_timer_, line)
 #define Z3Y_PROF_BUF(line) Z3Y_PROF_CAT(z3y_prof_buf_, line)
 #define Z3Y_PROF_RES(line) Z3Y_PROF_CAT(z3y_prof_res_, line)
-#define Z3Y_FILE_NAME z3y::helpers::GetFileNameFromPath(__FILE__)
+#define Z3Y_FILE_NAME z3y::utils::GetFileNameFromPath(__FILE__)
 
 // -----------------------------------------------------------------------------
 // 1. 基础 Scope (只记录时间)
