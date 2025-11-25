@@ -16,37 +16,12 @@
 
 /**
  * @file plugin_manager_pimpl.h
- * @brief [私有] z3y::PluginManager 的 Pimpl (私有实现) 头文件。
- * @author Yue Liu
- * @date 2025-07-05
- * @copyright Copyright (c) 2025 Yue Liu
- *
+ * @brief [私有头文件] PluginManager 的内部数据结构定义。
  * @details
- * [受众：框架维护者]
- *
- * [设计思想：Pimpl 模式]
- * Pimpl ("Pointer to Implementation"，指向实现的指针)是一种 C++设计模式，
- * 它将一个类的所有私有成员变量和私有函数（即“实现”）
- * 隐藏在一个单独的结构体中，
- * 并通过一个 `std::unique_ptr` 指针在公共头文件 (`plugin_manager.h`) 中引用。
- *
- * **优点 (为什么使用 Pimpl)：**
- * 1. **编译防火墙 (ABI稳定性)：**
- * 只要 `plugin_manager.h`中的公共 API 不变， 我们可以 *任意* 修改此 `plugin_manager_pimpl.h`
- * 文件 (例如添加/删除成员变量)，
- * 而 *无需* 重新编译使用了 `plugin_manager.h` 的所有代码 (宿主、插件)。
- * 这对于 SDK 的二进制兼容性和编译速度至关重要。
- *
- * 2. **隐藏实现细节：**
- * 公共头文件 (`plugin_manager.h`) 只需包含 C++
- * 标准库的 `filesystem`, `string`, `vector` 等。
- * 而所有重量级的、平台特定的或内部的头文件(如 `Windows.h`, `dlfcn.h`,
- * `shared_mutex`, `map`, `thread`)
- * 都可以只被包含在 `.cpp` 和这个私有 `.h`文件中，
- * 保持了公共 API 的整洁。
- *
- * @warning 此文件是 `z3y_plugin_manager`
- * 库的内部文件，*绝不* 应该被宿主 (Host) 或插件 (Plugin) 包含。
+ * **设计思想 (Pimpl Idiom):**
+ * 这个文件 *不* 会被暴露给插件开发者，只在框架内部编译。
+ * 这样我们就可以随意修改 `PluginManagerPimpl` 里的 `std::map`、`std::vector` 等成员，
+ * 而不需要担心破坏 ABI（二进制接口）兼容性，也不需要用户重新编译他们的插件。
  */
 
 #pragma once
@@ -55,223 +30,166 @@
 #define Z3Y_SRC_PLUGIN_MANAGER_PIMPL_H_
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
-#include <exception>   // 用于 std::exception_ptr
-#include <filesystem>  // C++17
+#include <exception>
+#include <filesystem>
 #include <map>
 #include <mutex>
-#include <optional>     // C++17
+#include <optional>
 #include <queue>
 #include <set>
-#include <shared_mutex>  // C++17 (读写锁)
-#include <sstream>
-#include <stdexcept>
-#include <thread>
+#include <shared_mutex> 
 #include <unordered_map>
-#include <utility>  // 用于 std::pair
+#include <unordered_set> 
+#include <utility>
 #include <vector>
- // [核心] 包含定义此 Pimpl 类的公共头文件
+
 #include "framework/plugin_manager.h"
 
-// 包含平台特定的动态库头文件
 #ifdef _WIN32
-#include <Windows.h>  // 用于 HMODULE, LoadLibrary 等
+#include <Windows.h>
 #else
-#include <dlfcn.h>  // 用于 dlopen, dlsym 等
+#include <dlfcn.h>
 #endif
 
 namespace z3y {
 
     /**
      * @struct PluginManagerPimpl
-     * @brief [私有] PluginManager 的所有私有成员变量的集合。
-     * @details
-     * [受众：框架维护者]
-     * 此结构体中的所有成员都可以从 `PluginManager`
-     * 的成员函数中通过 `pimpl_->member`访问。
+     * @brief PluginManager 的“肚子”。存放所有实际的数据。
      */
     struct PluginManagerPimpl {
     public:
+        // --- 内部类型定义 ---
+
         /**
-         * @struct ComponentInfo
-         * @brief [内部]
-         * 用于存储一个已注册组件的 *所有* 元数据。
+         * @brief 组件注册信息。
+         * 存储了从 `RegisterComponent` 传入的所有元数据。
          */
         struct ComponentInfo {
-            FactoryFunction factory;  //!< 用于创建实例的工厂 lambda
-            bool is_singleton;        //!< 是服务 (true) 还是组件 (false)
-            std::string alias;        //!< 别名
-            std::string source_plugin_path;  //!< 来源 DLL/SO 路径
-            std::vector<InterfaceDetails> implemented_interfaces;  //!< 实现的接口列表
-            bool is_default_registration;  //!< 是否为默认实现
+            FactoryFunction factory;            //!< 创建对象的工厂函数 (lambda)
+            bool is_singleton;                  //!< true=单例服务, false=瞬态组件
+            std::string alias;                  //!< 别名 (如 "Demo.Logger")
+            std::string source_plugin_path;     //!< 来源 DLL 的路径
+            std::vector<InterfaceDetails> implemented_interfaces; //!< 实现了哪些接口
+            bool is_default_registration;       //!< 是否是默认实现
         };
 
         /**
-         * @struct SingletonHolder
-         * @brief [内部]
-         * 用于线程安全地管理单例服务的创建。
-         *
-         * [设计思想：线程安全的单例初始化]
-         * 此结构体用于解决 `GetService`中的竞态条件。
-         *
-         * 1. `flag` (`std::once_flag`): 保证 `factory()`
-         * 在所有线程中 *仅被执行一次*。
-         * 2. `factory`: 构造函数 (从 `ComponentInfo`复制而来)。
-         * 3. `instance`: 成功创建后的 `PluginPtr` 实例。
-         * 4. `e_ptr` (`std::exception_ptr`): 如果 `factory()` 或 `Initialize()`
-         * 抛出异常，
-         * 该异常将被捕获并存储在此处。
-         * 随后所有对 `GetService` 的调用都将 *重新抛出*
-         * 此异常，实现“快速失败” (Fail-Fast)。
+         * @brief 单例持有者。
+         * 用于管理单例服务的生命周期。
          */
         struct SingletonHolder {
-            std::once_flag flag;          //!< C++11 "Call Once" 标志
-            FactoryFunction factory;      //!< 构造实例的工厂
-            PluginPtr<IComponent> instance;  //!< 缓存的实例指针
-            std::exception_ptr e_ptr;     //!< 缓存的构造异常
+            std::once_flag flag;                //!< 保证初始化只执行一次 (std::call_once)
+            FactoryFunction factory;            //!< 构造函数
+            PluginPtr<IComponent> instance;     //!< 缓存的单例指针
+            std::exception_ptr e_ptr;           //!< 如果构造失败，捕获异常以便再次抛出
         };
 
         /**
-         * @struct Subscription
-         * @brief [内部] 用于存储一个事件订阅的 *所有* 信息。
+         * @brief 订阅条目。
+         * 代表一个有效的事件订阅关系。
          */
         struct Subscription {
-            std::weak_ptr<void> subscriber_id;  //!< 订阅者 (类型擦除的 weak_ptr)
-            std::weak_ptr<void> sender_id;    //!< 发布者 (如果是 Sender 订阅)
-            std::function<void(const Event&)> callback;  //!< 类型擦除的回调函数
-            ConnectionType connection_type;  //!< kDirect 或 kQueued
+            std::weak_ptr<void> subscriber_id;  //!< 订阅者 ID (弱引用，防止循环引用)
+            std::weak_ptr<void> sender_id;      //!< 关注的发送者 (可选)
+            std::function<void(const Event&)> callback; //!< 回调闭包
+            ConnectionType connection_type;     //!< 同步还是异步
+            std::shared_ptr<std::atomic<bool>> active_token; //!< 原子票据 (核心机制)
+
+            Subscription(std::weak_ptr<void> sub, std::weak_ptr<void> snd,
+                std::function<void(const Event&)> cb, ConnectionType type,
+                std::shared_ptr<std::atomic<bool>> token)
+                : subscriber_id(std::move(sub)), sender_id(std::move(snd)),
+                callback(std::move(cb)), connection_type(type),
+                active_token(std::move(token)) {
+            }
         };
 
-        // --- [受众：框架维护者] 类型别名 (用于事件总线) ---
+        // 订阅列表。使用 shared_ptr 包装，为了实现 COW (Copy-On-Write)。
+        // 当遍历列表发布事件时，如果有人修改列表，我们修改的是新副本，不影响遍历。
+        using SubList = std::vector<Subscription>;
+        using SubListPtr = std::shared_ptr<const SubList>;
 
-        //! 事件 ID -> 该事件的所有订阅
-        using EventCallbackList = std::vector<Subscription>;
-        using EventMap = std::unordered_map<EventId, EventCallbackList>;
+        // 事件 ID -> 订阅列表
+        using EventMap = std::unordered_map<EventId, SubListPtr>;
+        using SenderEventMap = std::unordered_map<EventId, SubListPtr>;
+        // 发送者 ID -> (事件 ID -> 订阅列表)
+        // 使用 owner_less 来比较 weak_ptr
+        using SenderMap = std::map<std::weak_ptr<void>, SenderEventMap, std::owner_less<std::weak_ptr<void>>>;
+
         /**
-         * @brief [内部] 发布者 -> 事件 Map
-         *
-         * [设计思想：`std::map` 与 `std::owner_less`]
-         *
-         * 必须使用 `std::map` (红黑树) 而不是 `unordered_map` (哈希表)，
-         * 因为 `std::weak_ptr` 没有标准的哈希函数 (`std::hash`)。
-         *
-         * 我们使用 `std::owner_less` 作为比较器，
-         * 它比较的是 `weak_ptr` 指向的 *控制块* 的地址，
-         * 这种比较方式即使在对象已销毁后仍然是稳定和有效的。
+         * @brief 异步任务包。
          */
-        using SenderMap =
-            std::map<std::weak_ptr<void>, EventMap,
-            std::owner_less<std::weak_ptr<void>>>;
+        struct EventTask {
+            std::function<void()> func; //!< 要在工作线程执行的闭包
+            EventId event_id = 0;       //!< 调试用的事件 ID
+        };
 
-        //! 异步事件循环的任务队列 (一个 `void()` lambda)
-        using EventTask = std::function<void()>;
-
-        //! [内部] 用于 GC：订阅者 -> 它订阅的所有全局事件
-        using SubscriberLookupMapG =
-            std::map<std::weak_ptr<void>, std::set<EventId>,
-            std::owner_less<std::weak_ptr<void>>>;
-
-        //! [内部] 用于 GC：订阅者 -> 它订阅的所有 (发布者,事件) 对
+        // 反向查找表类型定义 (用于快速 Unsubscribe)
+        using SubscriberLookupMapG = std::map<std::weak_ptr<void>, std::set<EventId>, std::owner_less<std::weak_ptr<void>>>;
         using SenderLookupKey = std::pair<std::weak_ptr<void>, EventId>;
         struct SenderLookupKeyLess {
-            bool operator()(const SenderLookupKey& lhs,
-                const SenderLookupKey& rhs) const {
-                if (std::owner_less<std::weak_ptr<void>>()(lhs.first, rhs.first))
-                    return true;
-                if (std::owner_less<std::weak_ptr<void>>()(rhs.first, lhs.first))
-                    return false;
+            bool operator()(const SenderLookupKey& lhs, const SenderLookupKey& rhs) const {
+                if (std::owner_less<std::weak_ptr<void>>()(lhs.first, rhs.first)) return true;
+                if (std::owner_less<std::weak_ptr<void>>()(rhs.first, lhs.first)) return false;
                 return lhs.second < rhs.second;
             }
         };
-        using SubscriberLookupMapS =
-            std::map<std::weak_ptr<void>, std::set<SenderLookupKey, SenderLookupKeyLess>,
-            std::owner_less<std::weak_ptr<void>>>;
+        using SubscriberLookupMapS = std::map<std::weak_ptr<void>, std::set<SenderLookupKey, SenderLookupKeyLess>, std::owner_less<std::weak_ptr<void>>>;
 
-        // --- [受众：框架维护者] 核心成员变量 (组件注册表) ---
+        // --- 成员变量 (Data) ---
 
-        /**
-         * @brief [核心锁] 保护所有注册表 (components_, singletons_,
-         * alias_map_ 等)。
-         *
-         * [设计思想：读写锁]
-         * 这是一个 `std::shared_mutex` (读写锁)，用于优化性能：
-         * - `GetService` / `CreateInstance` (高频) 只需要 **读锁**
-         * (`std::shared_lock`)。
-         * - `RegisterComponent` / `LoadPlugin` (低频) 需要 **写锁**
-         * (`std::unique_lock`)。
-         * 这允许多个线程 *同时* 调用 `GetService` 而不会相互阻塞。
-         */
-        std::shared_mutex registry_mutex_;
+        /** @brief 注册表读写锁。保护 components_, singletons_ 等。 */
+        mutable std::shared_mutex registry_mutex_;
 
-        //! CLSID -> ComponentInfo
-        //! (框架中所有已注册组件的“主数据库”)
+        /** @brief 组件信息表 (ClassId -> Info)。 */
         std::unordered_map<ClassId, ComponentInfo> components_;
-        //! CLSID -> SingletonHolder
-        //! (单例实例的线程安全缓存)
+        /** @brief 单例缓存表 (ClassId -> Holder)。 */
         std::unordered_map<ClassId, SingletonHolder> singletons_;
-        //! (使用 vector 保证 LIFO 卸载顺序)
-        //! 插件路径 -> 已加载的库句柄 (HMODULE 或 void*)
+        /** @brief 已加载的 DLL 列表 (路径 -> 句柄)。 */
         std::vector<std::pair<std::string, PluginManager::LibHandle>> loaded_libs_;
-        //! 别名 (String) -> CLSID (用于快速查找)
+        /** @brief 别名索引 (Alias -> ClassId)。 */
         std::unordered_map<std::string, ClassId> alias_map_;
-        //! 接口 IID -> CLSID (用于 `GetDefaultService`)
+        /** @brief 默认实现索引 (InterfaceId -> ClassId)。 */
         std::unordered_map<InterfaceId, ClassId> default_map_;
-
-        // --- [受众：框架维护者] 内省索引 ---
-        //! 接口 IID -> 实现该接口的 CLSID 列表 (用于
-        //! FindComponentsImplementing)
+        /** @brief 接口反查表 (InterfaceId -> [ClassId, ClassId...])。 */
         std::unordered_map<InterfaceId, std::vector<ClassId>> interface_index_;
-        //! 插件路径 -> 该插件注册的 CLSID 列表 (用于
-        //! GetComponentsFromPlugin)
+        /** @brief 插件来源索引 (DLL路径 -> [ClassId...])。用于卸载时清理。 */
         std::unordered_map<std::string, std::vector<ClassId>> plugin_path_index_;
 
-        // --- [受众：框架维护者] 插件加载事务 ---
-        //! (临时变量) `LoadPlugin` 期间，指向当前正在加载的插件路径
+        /** @brief 加载上下文变量：当前正在加载哪个 DLL。 */
         std::string current_loading_plugin_path_;
-        //! (临时变量) `LoadPlugin` 期间，
-        //! 指向一个 vector，用于收集此会话中添加的 CLSID (以便在失败时回滚)
+        /** @brief 加载上下文变量：当前 DLL 注册了哪些组件 (失败回滚用)。 */
         std::vector<ClassId>* current_added_components_ = nullptr;
 
-        // --- [受众：框架维护者] 事件总线成员 ---
-        /**
-         * @brief [核心锁] 保护所有事件总线订阅列表。
-         *
-         * [设计思想：读写锁]
-         * `std::shared_mutex` (读写锁)：
-         * - `Fire...`: [高频] 获取 **读锁** (`std::shared_lock`)
-         * 来复制回调列表。(注：`event_bus_impl.cpp`* 中实际使用了 *写锁*，以支持 Lazy GC)。
-         * - `Subscribe...` / `Unsubscribe...`: [低频] 需要 **写锁**
-         * (`std::unique_lock`) 来修改列表。
-         */
-        std::shared_mutex event_mutex_;
+        // --- 事件总线数据 ---
 
-        //! 全局事件订阅
-        EventMap global_subscribers_;
-        //! 特定发布者事件订阅
-        SenderMap sender_subscribers_;
-        //! GC 反向查找表 (全局)
-        SubscriberLookupMapG global_sub_lookup_;
-        //! GC 反向查找表 (特定发布者)
-        SubscriberLookupMapS sender_sub_lookup_;
+        /** @brief 订阅表互斥锁。保护 global_subscribers_ 等。 */
+        mutable std::mutex subscriber_map_mutex_;
 
-        // --- [受众：框架维护者] 异步事件总线成员 ---
-        std::thread event_loop_thread_;       //!< 事件循环工作线程
-        std::queue<EventTask> event_queue_;   //!< 异步任务队列
-        std::mutex queue_mutex_;              //!< *仅* 保护 `event_queue_` 和 `running_`
-        std::condition_variable queue_cv_;    //!< 用于唤醒事件循环线程
-        bool running_ = true;                 //!< `false` 时线程将退出
-        //! 垃圾回收 (GC) 队列，用于解耦 `Unsubscribe` 和反向查找表的清理
-        std::queue<std::weak_ptr<void>> gc_queue_;
+        EventMap global_subscribers_;   //!< 全局订阅表
+        SenderMap sender_subscribers_;  //!< 特定发送者订阅表
+        SubscriberLookupMapG global_sub_lookup_; //!< 反查表：谁订阅了什么全局事件
+        SubscriberLookupMapS sender_sub_lookup_; //!< 反查表：谁订阅了什么 Sender 事件
 
-        // --- [受众：框架维护者] 钩子 (Hooks) ---
-        //! 事件追踪钩子 (用于调试)
+        // --- 异步线程与 GC ---
+        std::thread event_loop_thread_; //!< 事件循环线程
+        std::queue<EventTask> event_queue_; //!< 任务队列
+        mutable std::mutex queue_mutex_; //!< 保护队列的锁
+        std::condition_variable queue_cv_; //!< 条件变量，用于唤醒线程
+        bool running_ = true; //!< 线程运行标志
+
+        // GC 状态
+        mutable std::mutex gc_status_mutex_;
+        std::unordered_set<EventId> pending_gc_events_; //!< 哪些事件需要进行垃圾回收
+
+        // Hooks
         EventTraceHook event_trace_hook_ = nullptr;
-        //! (OOB) 异常处理器
         using ExceptionCallback = std::function<void(const std::exception&)>;
-        //! (使用 shared_ptr 确保回调在析构时仍然安全)
         std::shared_ptr<ExceptionCallback> exception_handler_ = nullptr;
-        //! 保护 `exception_handler_` 的锁
-        std::mutex exception_handler_mutex_;
+        mutable std::mutex exception_handler_mutex_;
     };
 
 }  // namespace z3y
