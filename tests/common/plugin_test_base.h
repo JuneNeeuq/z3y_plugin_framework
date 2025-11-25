@@ -126,7 +126,7 @@ protected:
         std::string err;
         bool ret = manager_->LoadPlugin(path, err);
         if (!ret) {
-            std::cerr << "[TestBase] Failed to load " << path.string() << ": " << err << std::endl;
+            std::cerr << "[TestBase] Failed to load " << z3y::utils::PathToUtf8(path) << ": " << err << std::endl;
         }
         return ret;
     }

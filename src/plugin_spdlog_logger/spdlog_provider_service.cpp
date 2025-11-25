@@ -201,8 +201,8 @@ namespace z3y {
                     std::ifstream f(fs_config_path);
 
                     if (!f.is_open()) {
-                        // 如果打开失败，抛出包含路径的错误信息 (转换回 string 以便打印)
-                        throw std::runtime_error("Config file not found: " + fs_config_path.string());
+                        // 如果打开失败，抛出包含路径的错误信息
+                        throw std::runtime_error("Config file not found: " + config_file_path);
                     }
                     // [Robustness] 允许 JSON 解析抛出异常，我们在外层捕获并打印错误日志
                     json config = json::parse(f);

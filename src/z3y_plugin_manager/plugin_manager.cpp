@@ -623,7 +623,7 @@ namespace z3y {
         } catch (const PluginException&) { /* 忽略 */
         }
 
-        std::string path_str = file_path.string();
+        std::string path_str = z3y::utils::PathToUtf8(file_path);
         {
             // 检查是否已加载
             std::unique_lock lock(pimpl_->registry_mutex_);
@@ -745,7 +745,7 @@ namespace z3y {
         std::vector<std::string> load_failures;
         if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir)) {
             load_failures.push_back("Directory not found or is not a directory: " +
-                dir.string());
+                z3y::utils::PathToUtf8(dir));
             return load_failures;
         }
 
@@ -757,7 +757,7 @@ namespace z3y {
                 if (IsPluginFile(entry.path())) {
                     error_message.clear();
                     if (!LoadPluginInternal(entry.path(), init_func_name, error_message)) {
-                        load_failures.push_back("Failed to load '" + entry.path().string() +
+                        load_failures.push_back("Failed to load '" + z3y::utils::PathToUtf8(entry.path()) +
                             "': " + error_message);
                     }
                 }
@@ -768,7 +768,7 @@ namespace z3y {
                 if (IsPluginFile(entry.path())) {
                     error_message.clear();
                     if (!LoadPluginInternal(entry.path(), init_func_name, error_message)) {
-                        load_failures.push_back("Failed to load '" + entry.path().string() +
+                        load_failures.push_back("Failed to load '" + z3y::utils::PathToUtf8(entry.path()) +
                             "': " + error_message);
                     }
                 }
