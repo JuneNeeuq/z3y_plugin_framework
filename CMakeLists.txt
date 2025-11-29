@@ -227,3 +227,14 @@ install(
     FILES "${CMAKE_CURRENT_BINARY_DIR}/z3y_plugin_frameworkConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/z3y_plugin_framework
 )
+
+# 将第三方库的头文件拷贝到 SDK 的 include 目录
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog-1.16.0/include/spdlog
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json-3.12.0/include/nlohmann
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)

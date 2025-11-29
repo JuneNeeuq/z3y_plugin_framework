@@ -1,45 +1,79 @@
 ﻿{
-  "_comment_guide": "=== 生产级日志配置文件模板 (修改后需重启生效) ===",
+  "_comment_guide": "=== z3y Log Plugin 全功能配置文件 (v2.0) ===",
+  "_comment_note": "本配置对应代码 SpdlogProviderService.cpp 中的解析逻辑",
 
   "global_settings": {
-    "_comment_fmt": "格式模板: 时间 [线程ID] [Logger名] [级别] [文件:行号] [函数] 消息",
+    "_comment_section": "--- 全局行为配置 ---",
+
+    "_comment_fmt": "日志格式模板。支持 spdlog 格式符：\n%v(消息) %t(线程ID) %n(Logger名) %L(短级别) %l(长级别) %s(文件名) %#(行号) %!(函数名) %Y-%m-%d %H:%M:%S.%e(时间)",
     "format_pattern": "[%Y-%m-%d %H:%M:%S.%e] [%t] [%n] [%L] [%s:%#] [%!] %v",
 
-    "_comment_async": "异步队列配置。queue_size 建议为 2 的幂次方。policy 可选 'block'(阻塞) 或 'overrun_oldest'(丢弃旧日志)",
+    "_comment_queue": "异步队列大小。必须是 2 的幂次方 (如 4096, 8192, 65536)。越大越能抗突发流量，但占用内存越多。",
     "async_queue_size": 8192,
+
+    "_comment_policy": "队列满时的策略：\n'block': 阻塞业务线程等待空位 (保证不丢日志，但可能卡顿业务)\n'overrun_oldest': 丢弃队列中最旧的日志 (保证业务流畅，但可能丢日志)",
     "async_overflow_policy": "block",
 
-    "_comment_flush": "刷盘策略。flush_on_level 可选 trace, debug, info, warn, error, fatal",
+    "_comment_flush_interval": "定期刷盘间隔 (秒)。防止程序崩溃时丢失最近几秒的日志。",
     "flush_interval_seconds": 5,
+
+    "_comment_flush_level": "触发立即刷盘的最低等级。可选: trace, debug, info, warn, error, fatal。\n当出现此等级及以上的日志时，忽略间隔立即写入磁盘。",
     "flush_on_level": "error"
   },
 
   "sinks": {
-    "console_out": {
-      "_comment": "开发用：彩色控制台输出，只显示 Info 及以上重要信息",
+    "_comment_section": "--- 输出目标定义 (Sink) ---",
+    "_comment_types": "支持三种类型: stdout_color_sink (控制台), rotating_file_sink (按大小), daily_file_sink (按天)",
+
+    "console_dev": {
+      "_comment": "[控制台输出] 开发调试用，支持彩色高亮",
       "type": "stdout_color_sink",
-      "level": "Info"
+      "level": "trace"
     },
-    "main_file": {
-      "_comment": "生产用：按大小轮转的文件日志，保留 Debug 细节。最大 10MB * 5 个文件",
+
+    "file_rotating": {
+      "_comment": "[按大小轮转] 适用于限制磁盘占用的场景 (如客户端/嵌入式)。",
       "type": "rotating_file_sink",
       "base_name": "logs/app.log",
+      "_comment_size": "单个文件最大字节数 (10MB = 10485760)。注意单位是 Bytes。",
       "max_size": 10485760,
+      "_comment_files": "保留历史文件数量。超过后最旧的会被覆盖。",
       "max_files": 5,
-      "level": "Debug"
+      "level": "info"
+    },
+
+    "file_daily": {
+      "_comment": "[按天轮转] 适用于服务器后端。每天 00:00 自动切分新文件。",
+      "type": "daily_file_sink",
+      "_comment_path": "生成的文件名为 logs/server.log, logs/server.log.2025-01-01 等。",
+      "base_name": "logs/server_daily.log",
+      "level": "info"
     }
   },
 
   "rules": [
     {
-      "_comment": "示例规则：让 'System.Network' 模块的日志只存文件，不打控制台（减少刷屏）",
+      "_comment_section": "--- 路由规则 (Routing) ---",
+      "_comment_logic": "系统使用【最长前缀匹配】原则。Logger 名字匹配到哪个 matcher，就用哪个规则。如果都没匹配到，用 default_rule。",
+
+      "_comment": "场景1：网络模块日志量大，只存文件(按大小)，不打控制台，且只记录 Debug 以上",
       "matcher": "System.Network",
-      "sinks": [ "main_file" ]
+      "sinks": [ "file_rotating" ]
+    },
+    {
+      "_comment": "场景2：计费模块非常重要，需要按天归档，且所有细节(Trace)都要保留",
+      "matcher": "Business.Billing",
+      "sinks": [ "file_daily" ]
+    },
+    {
+      "_comment": "场景3：第三方库噪音太大，只记录 Error 级别 (复用 console_dev 但利用其 level 过滤)",
+      "matcher": "ThirdParty.LibX",
+      "sinks": [ "console_dev" ]
     }
   ],
 
   "default_rule": {
-    "_comment": "兜底规则：未匹配到上述规则的 Logger，将同时输出到控制台和文件",
-    "sinks": [ "console_out", "main_file" ]
+    "_comment": "兜底规则：未匹配到任何 rules 的 Logger 将使用此配置。",
+    "sinks": [ "console_dev", "file_rotating" ]
   }
 }

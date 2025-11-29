@@ -374,6 +374,9 @@ namespace z3y {
                     // 应用动态覆写规则 (检查是否有运维命令要求修改此 Logger 的级别)
                     ApplyLevelOverrides_UNLOCKED(name, spd_logger);
 
+                    // 必须注册到 spdlog 全局表，调用 Flush() 时才能找到它
+                    spdlog::register_logger(spd_logger);
+
                     auto wrapper = std::make_shared<LoggerImpl>(spd_logger);
                     logger_cache_[name] = wrapper;
                     return wrapper;

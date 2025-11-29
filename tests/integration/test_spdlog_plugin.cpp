@@ -223,3 +223,86 @@ TEST_F(SpdlogPluginTest, FlushDoesNotCrash) {
 
     log_mgr->Flush(); // 应该将缓冲区内容写入磁盘
 }
+
+/**
+ * @test 验证强制存盘功能的有效性 (Bug Regression Test)
+ * @brief 验证调用 Flush() 后，数据是否立即被写入磁盘，而不是停留在内存中。
+ * @details
+ * 此测试是为了回归验证 "Unregistered Logger" Bug。
+ * 如果 Logger 创建后未注册到 spdlog 全局表，log_mgr->Flush() (即 spdlog::apply_all(flush))
+ * 将无法找到该 Logger，导致数据不落盘。
+ */
+TEST_F(SpdlogPluginTest, ExplicitFlushPersistsDataImmediately) {
+    auto log_mgr = z3y::GetDefaultService<ILogManagerService>();
+
+    // 1. [关键配置] 构造一个 "懒惰" 的配置
+    // - flush_interval_seconds: 60秒 (禁止时间自动刷盘)
+    // - flush_on_level: off (禁止根据等级自动刷盘)
+    // 这样只有显式调用 Flush() 才能让数据落盘
+    std::string filename = "flush_test.log";
+    std::filesystem::path log_file_abs_path = bin_dir_ / "logs" / filename;
+
+    // 清理旧文件，确保测试环境纯净
+    if (std::filesystem::exists(log_file_abs_path)) {
+        std::filesystem::remove(log_file_abs_path);
+    }
+
+    std::string config_content = R"({
+        "global_settings": {
+            "format_pattern": "%v",
+            "async_queue_size": 4096,
+            "flush_interval_seconds": 60, 
+            "flush_on_level": "off"
+        },
+        "sinks": {
+            "test_file": {
+                "type": "rotating_file_sink",
+                "base_name": "flush_test.log", 
+                "max_size": 1048576,
+                "max_files": 1,
+                "level": "info"
+            }
+        },
+        "default_rule": {
+            "sinks": ["test_file"]
+        }
+    })";
+
+    std::filesystem::path config_path = bin_dir_ / "flush_config.json";
+    std::ofstream out(config_path);
+    out << config_content;
+    out.close();
+
+    // 2. 初始化服务
+    ASSERT_TRUE(log_mgr->InitializeService(
+        z3y::utils::PathToUtf8(config_path),
+        z3y::utils::PathToUtf8(bin_dir_ / "logs")
+    ));
+
+    // 3. 获取 Logger 并写入唯一数据
+    auto logger = log_mgr->GetLogger("FlushTester");
+
+    // 生成一个随机标记字符串
+    std::string unique_token = "TOKEN_" + std::to_string(std::rand());
+    Z3Y_LOG_INFO(logger, "This message must be flushed immediately: {}", unique_token);
+
+    // [验证点 A] 在 Flush 之前，理论上数据还在内存队列或缓冲区中
+    // (注意：这取决于操作系统 IO 缓存，不一定总是空，但我们主要验证 Flush 后的结果)
+
+    // 4. [核心动作] 强制刷盘
+    // 如果插件有 Bug (未注册 Logger)，这一步将不起作用
+    log_mgr->Flush();
+
+    // 5. [验证点 B] 立即读取文件检查
+    std::ifstream f(log_file_abs_path);
+    ASSERT_TRUE(f.is_open()) << "日志文件应该已经被创建: " << log_file_abs_path;
+
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+
+    // 断言：文件中必须包含我们刚才写入的唯一 Token
+    EXPECT_NE(content.find(unique_token), std::string::npos)
+        << "强制 Flush() 失败！日志文件内容为空或未包含最新数据。\n"
+        << "可能原因：Logger 未注册到 spdlog 全局表，导致 apply_all(flush) 漏掉了它。";
+
+    f.close();
+}
