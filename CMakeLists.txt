@@ -35,6 +35,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ==============================================================================
+# 编译选项配置 (Build Options)
+# ==============================================================================
+# option(变量名 "描述" 默认值)
+option(Z3Y_BUILD_DEMOS "Build demo plugins and examples" OFF) # 默认关闭
+option(Z3Y_BUILD_TOOLS "Build auxiliary tools like benchmarks" OFF) # 默认关闭
+option(Z3Y_BUILD_HOST_CONSOLE "Build the host console demo" OFF) # 默认关闭
+option(Z3Y_BUILD_TESTS "Build unit and integration tests" OFF)
+
+# ==============================================================================
 # 2. 编译器与运行时环境配置 (ABI 兼容性的基石)
 # ==============================================================================
 
@@ -162,18 +171,26 @@ add_subdirectory(src/interfaces_profiler) # 性能分析工具
 add_subdirectory(src/plugin_profiler)
 
 # 5.3 演示/示例代码 (Demo & Examples)
-add_subdirectory(src/interfaces_demo)
-add_subdirectory(src/plugin_demo_core_services)
-add_subdirectory(src/plugin_demo_runner)
-add_subdirectory(src/plugin_demo_module_core)
-add_subdirectory(src/plugin_demo_module_events)
-add_subdirectory(src/plugin_demo_module_introspection)
+if(Z3Y_BUILD_DEMOS)
+    message(STATUS "Z3Y: Building demo plugins...")
+    add_subdirectory(src/interfaces_demo)
+    add_subdirectory(src/plugin_demo_core_services)
+    add_subdirectory(src/plugin_demo_runner)
+    add_subdirectory(src/plugin_demo_module_core)
+    add_subdirectory(src/plugin_demo_module_events)
+    add_subdirectory(src/plugin_demo_module_introspection)
+endif()
 
 # 5.4 辅助工具
-add_subdirectory(tools/tool_log_benchmark)  # 日志性能压测工具
+if(Z3Y_BUILD_TOOLS)
+    message(STATUS "Z3Y: Building tools...")
+    add_subdirectory(tools/tool_log_benchmark)  # 日志性能压测工具
+endif()
 
 # 5.5 宿主程序
-add_subdirectory(src/host_console_demo)   # 控制台宿主示例
+if(Z3Y_BUILD_HOST_CONSOLE)
+    add_subdirectory(src/host_console_demo)   # 控制台宿主示例
+endif()
 
 # ==============================================================================
 # 6. 单元测试与集成测试 (Google Test)
@@ -189,7 +206,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "Force gtest to use the shared C runtim
 
 # 引入 GTest 源码
 # 假设用户已将 GTest 解压至 third_party/googletest-1.17.0
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest-1.17.0/CMakeLists.txt")
+if(Z3Y_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest-1.17.0/CMakeLists.txt")
     add_subdirectory(third_party/googletest-1.17.0)
     
     # 开启 CTest 测试支持
@@ -200,7 +217,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest-1.17.0/CMakeLists.
     # 这里包含了基于 Fixture 的分层测试架构 (tests/common, tests/integration)
     add_subdirectory(tests)
 else()
-    message(WARNING "GoogleTest not found in third_party/googletest-1.17.0. Unit tests will be skipped.")
+    message(STATUS "Z3Y: Unit tests are disabled or GoogleTest not found.")
 endif()
 
 # ==============================================================================
