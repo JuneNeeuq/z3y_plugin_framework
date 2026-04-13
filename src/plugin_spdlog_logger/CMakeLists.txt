@@ -25,7 +25,9 @@ target_link_libraries(
   nlohmann_json::nlohmann_json # 配置解析依赖
 )
 
-install(
-  TARGETS plugin_spdlog_logger
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(Z3Y_ENABLE_INSTALL)
+	install(
+	  TARGETS plugin_spdlog_logger
+	  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+	)
+endif()

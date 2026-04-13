@@ -20,8 +20,10 @@ target_link_libraries(plugin_profiler
   nlohmann_json::nlohmann_json # JSON支持
 )
 
-# 安装插件 DLL
-install(TARGETS plugin_profiler RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(Z3Y_ENABLE_INSTALL)
+	# 安装插件 DLL
+	install(TARGETS plugin_profiler RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-# 安装默认配置文件到 bin/config/
-install(FILES profiler_config.json DESTINATION ${CMAKE_INSTALL_BINDIR}/config)
+	# 安装默认配置文件到 bin/config/
+	install(FILES profiler_config.json DESTINATION ${CMAKE_INSTALL_BINDIR}/config)
+endif()

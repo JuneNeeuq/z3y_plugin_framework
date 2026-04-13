@@ -27,6 +27,19 @@ cmake_minimum_required(VERSION 3.15)
 # 定义项目名称和版本号
 project(z3y_plugin_framework VERSION 2.0.0)
 
+# ==============================================================================
+# [新增] 0. 顶级工程检测与安装控制 (Top-level Project Detection)
+# ==============================================================================
+# 如果当前源码目录等于最顶层项目的源码目录，说明是独立编译
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(Z3Y_IS_TOP_LEVEL ON)
+else()
+    set(Z3Y_IS_TOP_LEVEL OFF)
+endif()
+
+# 提供一个控制是否启用安装规则的全局开关 (默认值取决于是否为顶级工程)
+option(Z3Y_ENABLE_INSTALL "Enable installation of z3y_plugin_framework targets" ${Z3Y_IS_TOP_LEVEL})
+
 # [关键] 强制使用 C++17 标准
 # 框架使用了 std::shared_mutex, std::filesystem 等 C++17 特性。
 set(CMAKE_CXX_STANDARD 17)
@@ -107,20 +120,22 @@ add_subdirectory(third_party/spdlog-1.16.0)
 # 强制加入到本项目的导出集 (z3y_plugin_frameworkTargets) 中。
 # 这样，它们就变成了本框架 SDK 的一部分，对使用者透明。
 
-# 1. 导出 nlohmann_json (Header-only 库)
-install(TARGETS nlohmann_json 
-    EXPORT z3y_plugin_frameworkTargets
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+if(Z3Y_ENABLE_INSTALL)
+    # 1. 导出 nlohmann_json (Header-only 库)
+    install(TARGETS nlohmann_json 
+        EXPORT z3y_plugin_frameworkTargets
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
 
-# 2. 导出 spdlog (静态库或 Header-only)
-install(TARGETS spdlog 
-    EXPORT z3y_plugin_frameworkTargets
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+    # 2. 导出 spdlog (静态库或 Header-only)
+    install(TARGETS spdlog 
+        EXPORT z3y_plugin_frameworkTargets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()
 
 # ==============================================================================
 # 4. 构建输出路径与命名规范
@@ -224,34 +239,36 @@ endif()
 # 7. SDK 生成与导出
 # ==============================================================================
 
-# 生成并安装 CMake 配置文件
-# 这使得第三方开发者可以在他们的 CMakeLists.txt 中使用：
-# find_package(z3y_plugin_framework REQUIRED)
-install(
-  EXPORT z3y_plugin_frameworkTargets
-  FILE z3y_plugin_frameworkTargets.cmake
-  NAMESPACE z3y_plugin_framework::  # 命名空间前缀
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/z3y_plugin_framework
-)
+if(Z3Y_ENABLE_INSTALL)
+    # 生成并安装 CMake 配置文件
+    # 这使得第三方开发者可以在他们的 CMakeLists.txt 中使用：
+    # find_package(z3y_plugin_framework REQUIRED)
+    install(
+      EXPORT z3y_plugin_frameworkTargets
+      FILE z3y_plugin_frameworkTargets.cmake
+      NAMESPACE z3y_plugin_framework::  # 命名空间前缀
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/z3y_plugin_framework
+    )
 
-# (可选) 生成版本配置文件 (z3y_plugin_frameworkConfigVersion.cmake)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/z3y_plugin_frameworkConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-install(
-    FILES "${CMAKE_CURRENT_BINARY_DIR}/z3y_plugin_frameworkConfigVersion.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/z3y_plugin_framework
-)
+    # (可选) 生成版本配置文件 (z3y_plugin_frameworkConfigVersion.cmake)
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/z3y_plugin_frameworkConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
+    install(
+        FILES "${CMAKE_CURRENT_BINARY_DIR}/z3y_plugin_frameworkConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/z3y_plugin_framework
+    )
 
-# 将第三方库的头文件拷贝到 SDK 的 include 目录
-install(
-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog-1.16.0/include/spdlog
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+    # 将第三方库的头文件拷贝到 SDK 的 include 目录
+    install(
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog-1.16.0/include/spdlog
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
 
-install(
-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json-3.12.0/include/nlohmann
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+    install(
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json-3.12.0/include/nlohmann
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()

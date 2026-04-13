@@ -33,12 +33,14 @@ target_link_libraries(
 )
 
 # 4. 安装接口头文件
-install(
-  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/interfaces_core
-  FILES_MATCHING
-  PATTERN "*.h"
-)
+	if(Z3Y_ENABLE_INSTALL)
+	install(
+	  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
+	  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/interfaces_core
+	  FILES_MATCHING
+	  PATTERN "*.h"
+	)
 
-# 5. 导出目标
-install(TARGETS interfaces_core EXPORT z3y_plugin_frameworkTargets)
+	# 5. 导出目标
+	install(TARGETS interfaces_core EXPORT z3y_plugin_frameworkTargets)
+endif()

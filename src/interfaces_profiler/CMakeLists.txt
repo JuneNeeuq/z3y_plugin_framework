@@ -25,12 +25,14 @@ target_link_libraries(
   interfaces_core
 )
 
-# [安装规则]
-install(
-  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/interfaces_profiler
-  FILES_MATCHING PATTERN "*.h"
-)
+if(Z3Y_ENABLE_INSTALL)
+	# [安装规则]
+	install(
+	  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
+	  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/interfaces_profiler
+	  FILES_MATCHING PATTERN "*.h"
+	)
 
-# [导出目标]
-install(TARGETS interfaces_profiler EXPORT z3y_plugin_frameworkTargets)
+	# [导出目标]
+	install(TARGETS interfaces_profiler EXPORT z3y_plugin_frameworkTargets)
+endif()

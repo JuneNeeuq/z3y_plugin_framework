@@ -80,22 +80,24 @@ if (NOT WIN32)
   target_link_libraries(z3y_plugin_manager PRIVATE pthread dl)
 endif ()
 
-# 6. 安装 (将 z3y_plugin_manager 安装到 SDK)
-install(
-  TARGETS z3y_plugin_manager
-  # 导出目标，供 find_package 使用
-  EXPORT z3y_plugin_frameworkTargets
-  # .lib (Windows)
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  # .dll (Windows) / .so (Linux)
-  # 确保 DLL 也被安装到 bin 目录 (与 host.exe 在一起)
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  # .so (Linux, 当不作为 SHARED 时)
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+if(Z3Y_ENABLE_INSTALL)
+	# 6. 安装 (将 z3y_plugin_manager 安装到 SDK)
+	install(
+	  TARGETS z3y_plugin_manager
+	  # 导出目标，供 find_package 使用
+	  EXPORT z3y_plugin_frameworkTargets
+	  # .lib (Windows)
+	  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+	  # .dll (Windows) / .so (Linux)
+	  # 确保 DLL 也被安装到 bin 目录 (与 host.exe 在一起)
+	  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+	  # .so (Linux, 当不作为 SHARED 时)
+	  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
-# 7. 安装 'framework' 目录下的 *所有* 头文件
-install(
-  DIRECTORY ${PROJECT_SOURCE_DIR}/framework/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/framework  # 安装到
-  # "include/framework"
-)
+	# 7. 安装 'framework' 目录下的 *所有* 头文件
+	install(
+	  DIRECTORY ${PROJECT_SOURCE_DIR}/framework/
+	  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/framework  # 安装到
+	  # "include/framework"
+	)
+endif()
