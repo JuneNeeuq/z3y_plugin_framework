@@ -136,7 +136,8 @@ namespace z3y {
             std::filesystem::path tmp_path = path;
             tmp_path += ".tmp";
 
-            FILE* fp = _wfopen(tmp_path.c_str(), L"wb");
+            FILE* fp = nullptr;
+            _wfopen_s(&fp, tmp_path.c_str(), L"wb");
             if (!fp) return false;
 
             size_t written = fwrite(content.data(), 1, content.size(), fp);

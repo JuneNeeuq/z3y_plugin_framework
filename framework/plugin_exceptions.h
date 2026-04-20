@@ -39,6 +39,14 @@
 #include <string>       // 用于错误信息
 #include "framework/z3y_framework_api.h"  // Z3Y_FRAMEWORK_API 导出
 
+// ---------------------------------------------------------
+// 【框架层屏蔽】开始：屏蔽 MSVC 下导出 STL 成员导致的跨边界警告
+// ---------------------------------------------------------
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4251 4275)
+#endif
+
 namespace z3y {
 
     /**
@@ -218,5 +226,12 @@ namespace z3y {
     }
 
 }  // namespace z3y
+
+// ---------------------------------------------------------
+// 【框架层屏蔽】结束：恢复用户原本的警告级别
+// ---------------------------------------------------------
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 #endif  // Z3Y_FRAMEWORK_PLUGIN_EXCEPTIONS_H_
