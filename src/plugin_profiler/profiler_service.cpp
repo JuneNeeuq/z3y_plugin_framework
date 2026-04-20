@@ -120,9 +120,9 @@ namespace z3y::plugins::profiler {
     void ProfilerService::Initialize() {
         auto mutable_config = std::make_shared<ProfilerConfig>();
 
-        if (auto [cfg_svc, err] = z3y::TryGetDefaultService<IConfigManagerService>(); err == InstanceError::kSuccess) {
-            cfg_svc->LoadConfig("profiler_config", "/settings", *mutable_config);
-        }
+        //if (auto [cfg_svc, err] = z3y::TryGetDefaultService<IConfigManagerService>(); err == InstanceError::kSuccess) {
+        //    cfg_svc->LoadConfig("profiler_config", "/settings", *mutable_config);
+        //}
 
         global_enable_cache_.store(mutable_config->global_enable);
         cached_max_queue_size_.store(mutable_config->max_queue_size);
@@ -136,11 +136,11 @@ namespace z3y::plugins::profiler {
             }
         }
 
-        if (auto [bus, err] = z3y::TryGetService<IEventBus>(clsid::kEventBus); err == InstanceError::kSuccess) {
-            config_conn_ = bus->SubscribeGlobal<ConfigurationReloadedEvent>(
-                shared_from_this(), &ProfilerService::OnConfigReloaded
-            );
-        }
+        //if (auto [bus, err] = z3y::TryGetService<IEventBus>(clsid::kEventBus); err == InstanceError::kSuccess) {
+        //    config_conn_ = bus->SubscribeGlobal<ConfigurationReloadedEvent>(
+        //        shared_from_this(), &ProfilerService::OnConfigReloaded
+        //    );
+        //}
 
         auto cfg = std::atomic_load(&config_ptr_);
         if (cfg->enable_tracing) InitTracing();
@@ -157,7 +157,8 @@ namespace z3y::plugins::profiler {
         free_pool_.clear();
     }
 
-    void ProfilerService::OnConfigReloaded(const ConfigurationReloadedEvent& e) {
+    /* void ProfilerService::OnConfigReloaded(
+        const ConfigurationReloadedEvent& e) {
         if (e.domain != "profiler_config") return;
 
         auto mutable_config = std::make_shared<ProfilerConfig>();
@@ -204,7 +205,7 @@ namespace z3y::plugins::profiler {
                 }
             }
         }
-    }
+    }*/
 
     void ProfilerService::FlushCurrentThread() noexcept {
         t_trace_buffer.Flush();

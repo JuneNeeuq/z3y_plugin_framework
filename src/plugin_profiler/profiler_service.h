@@ -176,7 +176,7 @@ namespace z3y::plugins::profiler {
          * @brief 响应配置热重载事件。
          * @param e 配置重载事件。
          */
-        void OnConfigReloaded(const z3y::interfaces::core::ConfigurationReloadedEvent& e);
+        //void OnConfigReloaded(const z3y::interfaces::core::ConfigurationReloadedEvent& e);
 
         // --- 内部 Trace 辅助函数 ---
         // 将各类事件序列化为 JSON 格式并写入 TLS 缓冲区

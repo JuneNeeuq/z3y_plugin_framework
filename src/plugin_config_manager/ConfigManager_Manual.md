@@ -1,248 +1,183 @@
-﻿# 📘 Plugin Config Manager 完全使用手册 (v2.2)
+﻿# z3y 框架核心组件：配置管理服务 (ConfigManager) 官方开发者指南 v3.0
 
-> **核心定位**：一个基于 `nlohmann/json` 的工业级配置管理系统。
-> **能力概览**：类型安全绑定、**多文件管理**、**单变量读写**、热重载、原子落盘。
+## 1. 概述与核心价值
+欢迎使用 z3y 框架的核心配置中枢。`ConfigProviderService` 旨在为你解决工业软件开发中最头疼的三个问题：
+1. **模块解耦**：A 插件和 B 插件需要共享参数？不需要互相 include 头文件，通过本服务即可完成数据交互。
+2. **状态同步**：UI 界面、后端内存、物理磁盘文件，三者状态永远保持绝对一致 (SSOT)。
+3. **高并发安全**：即便 10 个线程同时狂暴读写，底层也能保证绝对的线程安全与防死锁。
 
 ---
 
-## 1. 🚀 快速集成 (Integration)
+## 2. 🚀 新手快速起步 (Quick Start)
 
-### 1.1 CMake 依赖
-```cmake
-# CMakeLists.txt
-find_package(z3y_plugin_framework REQUIRED)
+在一个全新的插件中，你只需要三步即可完美接入配置服务。
 
-# [关键] 必须链接 nlohmann_json
-target_link_libraries(my_plugin 
-    PRIVATE 
-    z3y_plugin_framework::interfaces_core 
-    nlohmann_json::nlohmann_json
-)
-```
-
-### 1.2 宿主初始化 (Host Only)
-在 `main.cpp` 中初始化服务。
-
+### 2.1 引入必备头文件
 ```cpp
-#include "framework/z3y_framework.h"
+// 引入配置服务的纯虚接口与基础类型
 #include "interfaces_core/i_config_service.h"
+```
 
-void InitSystem() {
-    auto manager = z3y::PluginManager::GetActiveInstance();
-    manager->LoadPlugin("plugin_config_manager");
+### 2.2 完整的“Hello World”插件示例
+这是每一个新手必须掌握的标准模板（注意体会 `ConnectionGroup` 的使用）：
 
-    auto config_svc = z3y::GetDefaultService<z3y::interfaces::core::IConfigManagerService>();
-    
-    // [设置根目录] 所有的 .json 文件都会生成在这个目录下
-    // 必须是 UTF-8 编码路径
-    if (!config_svc->InitializeService("./configs")) {
-        std::cerr << "配置服务初始化失败 (路径不可写或磁盘满)" << std::endl;
+```cpp
+class MyFirstPlugin : public z3y::PluginImpl<MyFirstPlugin> {
+private:
+    // 【强制规范 1】必须作为类成员变量声明，用于自动管理订阅的生命周期！
+    z3y::interfaces::core::ConnectionGroup conn_group_; 
+
+public:
+    void Initialize() override {
+        // 【强制规范 2】通过 ServiceLocator 获取配置服务实例
+        auto config = z3y::GetDefaultService<z3y::interfaces::core::IConfigService>();
+        if (!config) return;
+
+        // 【核心操作】向系统注册一个名为 "Motion.Speed" 的浮点型参数
+        // 使用 += 语法糖将连接托管给 conn_group_
+        conn_group_ += config->Builder<double>("Motion.Speed")
+            .NameKey("马达速度")
+            .Default(50.0)         // 必须提供默认值
+            .Min(0).Max(100.0)     // 可选：防呆校验
+            .Bind([this](double v) {
+                // 当系统初始化，或任何人修改了该值时，这段 Lambda 会被自动触发！
+                std::cout << "马达速度已更新为: " << v << std::endl;
+                // this->UpdateHardware(v); 
+            });
     }
-}
-```
 
----
-
-## 2. 📂 核心概念：多文件管理 (Domains)
-
-配置服务天然支持将配置分散存储在多个文件中。
-**核心规则**：`LoadConfig` 的第一个参数 `domain` = **文件名** (不带后缀)。
-
-### 2.1 场景：模块化配置
-假设你的程序有两个模块：**网络模块**和**渲染模块**。
-
-```cpp
-void Initialize() {
-    auto svc = z3y::GetDefaultService<z3y::interfaces::core::IConfigManagerService>();
-
-    // 1. 操作 configs/network.json
-    NetworkConfig net_cfg;
-    svc->LoadConfig("network", "Server", net_cfg);
-
-    // 2. 操作 configs/graphics.json
-    GraphicsConfig gfx_cfg;
-    svc->LoadConfig("graphics", "Resolution", gfx_cfg);
-}
-```
-
-### 2.2 场景：保存所有更改
-框架会追踪哪些文件被修改了（Dirty Flag）。
-
-```cpp
-// 仅将 configs/network.json 写入磁盘
-svc->Save("network");
-
-// 将所有有变动的文件 (network.json, graphics.json) 全部写入磁盘
-svc->SaveAll();
-```
-
----
-
-## 3. 📝 模式 A：结构体绑定 (推荐)
-
-适用于管理复杂的业务配置。
-
-### 3.1 定义结构体
-**MyConfig.h**
-```cpp
-#pragma once
-#include <string>
-#include <vector>
-#include <nlohmann/json.hpp> // [必选] 宏依赖此头文件
-
-struct MyConfig {
-    // 1. 定义成员并给默认值 (兜底值)
-    int port = 8080;
-    std::string ip = "127.0.0.1";
-
-    // 2. 绑定宏 (自动生成序列化代码)
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MyConfig, port, ip);
-    
-    // 3. [可选] 自校验逻辑
-    bool Validate(std::string& err) {
-        if (port <= 0) { err = "Port must be > 0"; return false; }
-        return true;
+    void Shutdown() override {
+        // 插件卸载时，conn_group_ 会自动析构并断开配置回调，彻底杜绝野指针崩溃！
     }
 };
 ```
 
-### 3.2 加载与使用
-```cpp
-// MyPlugin.cpp
-void Initialize() {
-    auto svc = z3y::GetDefaultService<z3y::interfaces::core::IConfigManagerService>();
-    
-    MyConfig cfg;
-    // 从 "app_main.json" 的 "Server" 节点加载
-    auto status = svc->LoadConfig("app_main", "Server", cfg);
+---
 
-    if (status == z3y::interfaces::core::ConfigStatus::Success) {
-        // 加载成功
-    }
+## 3. 核心 API 字典：Builder 语法糖详解
+
+当你想向系统注册一个配置时，请使用 `config->Builder<类型>("路径").属性A().属性B()...终结动作()` 的链式语法。
+
+### 3.1 属性配置表
+
+| 链式方法 | 参数说明 | 作用与呈现效果 |
+| :--- | :--- | :--- |
+| `Default(T)` | 强类型 `T` | **【必填】** 设定基准默认值，这是底层确定数据类型的唯一依据。 |
+| `NameKey(str)` | `string` | 设定 UI 面板上该参数显示的中文/多语言名称。 |
+| `GroupKey(str)` | `string` | 一级分组。UI 将根据此字段把参数分门别类放入不同的 Tab 页签。 |
+| `SubGroupKey(str)` | `string` | 二级分组。UI 将根据此字段把参数分门别类放入不同的子框中。 |
+| `Min(U) / Max(U)` | 数字字面量 | 绝对物理边界。设定后，任何人试图突破此边界的修改都会被底层拦截并报错。 |
+| `Step(U)` | 数字字面量 | 步进值。指导 UI 生成带上下箭头的 SpinBox 时，点击一次增减的幅度。 |
+| `Enum(vals, keys)`| `vector` | 生成下拉框。`vals` 为后端存的真实值，`keys` 为 UI 显示的选项名。 |
+| `Widget(type)` | `WidgetType` | 强制 UI 使用特定控件渲染（如 `kPasswordInput` 显示为星号密码框）。 |
+| `ReadOnly(bool)` | `bool` | 将参数设为只读。用于将硬件的状态（如当前温度）只读展示给前台 UI。 |
+| `Hidden(bool)` | `bool` | 设为纯后端参数。UI 在获取全量数据时，此参数会被直接过滤隐藏。 |
+| `Advanced(bool)` | `bool` | 设为高级参数。UI 默认折叠，勾选“专家模式”后才显示。 |
+| `Validator(func)` | `Lambda` | **图灵完备校验**。例如：`.Validator([](int v){ return v%2==0 ? "" : "必须是偶数"; })` |
+
+### 3.2 终结动作（必须调用其一）
+* **`.Bind(Callback)`**：注册参数，立刻拿到默认值，并持续监听未来的所有修改。返回 `ScopedConnection` 句柄。
+* **`.RegisterOnly()`**：仅仅将参数挂载到系统中，自身不关心它的变化（被动轮询）。无返回值。
+
+---
+
+## 4. 运行时操作：读写、事务与 UI
+
+### 4.1 基础读写 (API 调用)
+当你需要主动获取或修改其他模块的参数时：
+```cpp
+// 1. 安全读取（如果路径写错，自动返回后面的备用值 0）
+int count = config->GetValueSafe<int>("Camera.TriggerCount", 0);
+
+// 2. 安全写入（触发合法性校验，通过后自动广播给所有订阅者）
+bool ok = config->SetValueSafe<int>("Camera.TriggerCount", count + 1, "Admin");
+```
+
+### 4.2 ACID 批量事务 (BatchUpdater)
+当你必须同时修改两个互相绑定的参数（如 XYZ 坐标，宽高比例），不允许出现中间态时：
+```cpp
+auto batch = config->CreateBatch();
+batch.Set("ROI.Width", 1920)
+     .Set("ROI.Height", 1080);
+
+// 提交事务。如果有任何一个参数校验失败，全量回滚，一个都不会生效。
+std::vector<std::string> errors = batch.Commit("Admin");
+if (!errors.empty()) {
+    std::cerr << "事务失败: " << errors[0] << std::endl;
+}
+```
+
+### 4.3 UI 前端数据拉取
+UI 界面不应自己保存参数，应按需拉取快照渲染：
+```cpp
+// 懒加载策略：仅拉取用户当前点击的 "相机设置" Tab 下的所有参数快照
+std::map<std::string, ConfigSnapshot> tab_data = config->GetConfigsByGroup("相机设置");
+```
+
+---
+
+## 5. 企业级高级特性
+
+### 5.1 现场急救：恢复出厂设置
+```cpp
+// 恢复单个被改乱的参数
+config->ResetToDefault("Algo.Threshold");
+// 恢复整个模块的所有参数
+config->ResetGroupToDefault("相机设置");
+```
+
+### 5.2 配方管理：导入与导出
+```cpp
+// 导出当前配方
+config->ExportToFile("D:/Recipes/A.json");
+// 导入新配方（参数 2: true 表示导入后立即生效，触发所有硬件的回调）
+config->ImportFromFile("D:/Recipes/B.json", true);
+```
+
+### 5.3 审计留痕 (Audit Trail)
+系统对参数的所有合法修改，都会生成一条 `ConfigChangedEvent` 并广播。日志插件可进行订阅防篡改留痕：
+```cpp
+// 监听系统的参数修改事件
+auto bus = z3y::GetDefaultService<z3y::IEventBus>();
+conn_group_ += bus->SubscribeGlobal<z3y::interfaces::core::ConfigChangedEvent>(
+    this, &MyLoggerPlugin::OnConfigChanged, z3y::ConnectionType::kQueued
+);
+
+// 回调签名
+void OnConfigChanged(const z3y::interfaces::core::ConfigChangedEvent& e) {
+    // e.path (路径), e.old_value, e.new_value, e.operator_role (操作人)
 }
 ```
 
 ---
 
-## 4. 🎯 模式 B：单变量/容器读写 (灵活)
+## 6. ⚠️ 新手必读：避坑指南与底层黑科技
 
-不想定义结构体？或者只想临时读取某个 `int`？可以直接操作基础类型。
+新人在使用本配置框架时，请牢记以下三条铁律：
 
-### 4.1 关键语法：JSON Pointer
-* **普通 Key**: `"Server"` -> 查找根对象下的 `Server` 字段。
-* **路径 Key**: `"/Server/Log/Level"` -> 以 `/` 开头，查找深层嵌套节点。
-
-### 4.2 读写 int/string/bool
-假设 `app.json` 内容为：`{ "UI": { "Window": { "Width": 1920 } } }`
-
+### 💣 铁律 1：绝对不能抛弃生命周期句柄 (ScopedConnection)
+**【错误示范】**：
 ```cpp
-void ResizeWindow() {
-    auto svc = z3y::GetDefaultService<z3y::interfaces::core::IConfigManagerService>();
-
-    // [读取]
-    int width = 800; // 默认值
-    // 模板参数 <int> 通常可省略，编译器会自动推导
-    svc->LoadConfig("app", "/UI/Window/Width", width);
-    
-    // [修改]
-    // 直接写入深层节点。如果中间节点(UI, Window)不存在，会自动创建！
-    svc->SetConfig("app", "/UI/Window/Width", 1024);
-    
-    // [保存]
-    svc->Save("app");
-}
+// 致命错误：没有用 conn_group_ 保存返回值！
+config->Builder<int>("A").Default(1).Bind([](int){}); 
 ```
+**【后果】**：返回的 `ScopedConnection` 是个临时变量，离开函数作用域立刻析构。这会导致你的回调**刚绑定上就被光速注销**，你永远收不到后续的数值更新！
 
-### 4.3 读写 STL 容器 (Vector, Map)
-直接把 JSON 数组映射为 `std::vector`，把对象映射为 `std::map`。
-
+### 💣 铁律 2：警惕隐式类型转换截断
+**【错误示范】**：
 ```cpp
-void UpdateWhitelist() {
-    // 默认白名单
-    std::vector<std::string> ips = {"127.0.0.1"};
-    
-    // 直接加载到 vector
-    // 对应 JSON: { "Firewall": { "Whitelist": ["127.0.0.1", "192.168.1.1"] } }
-    svc->LoadConfig("security", "/Firewall/Whitelist", ips);
-    
-    // 修改并保存
-    ips.push_back("10.0.0.1");
-    svc->SetConfig("security", "/Firewall/Whitelist", ips);
-    
-    svc->Save("security");
-}
+// 企图创建一个 double 类型的参数，但 Default 传了整型 10
+config->Builder<double>("Speed").Default(10).Bind(...);
 ```
+**【后果】**：C++ 编译器会聪明反被聪明误，把你的 `Builder<double>` 模板推导与 `10` 结合，强制转成了 `int64_t` 存入底层。后续你调用 `SetValueSafe<double>` 时会因为类型不匹配被严格的底层安全系统驳回！
+**【正确做法】**：`Builder<double>` 就必须老老实实写 `.Default(10.0)`。
 
----
+### 💣 铁律 3：禁止在回调中制造死循环重入
+虽然框架底层拥有最高级的 **“防死循环递归保护 (Recursion Protection)”**，当发现你来回踢皮球深度超过 3 次时会自动掐断并报错，但这依然是糟糕的设计。
+**【不建议的做法】**：在 A 参数的 `Bind` 回调里去 `SetValue(B)`，同时在 B 参数的回调里又去 `SetValue(A)`。尽量用 `BatchUpdater` 解决联动问题。
 
-## 5. ⚙️ API 行为详解 (Reference)
+### 🌟 底层黑科技：不要担心插件的加载顺序 (占位节点)
+**新手常问**：*“如果 UI 插件先启动，它想去订阅 `Camera.Exposure`，但这个时候相机插件还没加载，参数还没注册，UI 订阅会崩溃或者失败吗？”*
 
-### 5.1 读取 API (`LoadConfig`)
-
-```cpp
-ConfigStatus LoadConfig<T>(string domain, string key, T& out_val);
-```
-
-* **返回值**: 
-    * `Success`: 文件存在且读取成功。
-    * `CreatedDefault`: 文件不存在或 Key 不存在。`out_val` **保持默认值**，且内存中已创建该节点（**注意：此时磁盘上还没文件，需调用 Save**）。
-    * `Error`: 文件损坏 (JSON 语法错误) 或 类型不匹配。`out_val` **保持原值不被污染**。
-* **参数 `out_val`**: 
-    * 这是一个**引用参数 (Reference)**。
-    * 你必须先在 C++ 中给它赋好初值（即默认值）。
-    * 如果加载成功，它的值会被覆盖；如果失败，它保持原样。
-
-### 5.2 写入 API (`SetConfig` & `Save`)
-
-* `SetConfig(domain, key, val)`: 
-    * **纯内存操作**。极快，线程安全。
-    * 它会将 `domain` 标记为 Dirty。
-* `Save(domain)`: 
-    * **磁盘 IO 操作**。
-    * 只有调用它，内存里的修改才会落盘。
-    * **原子写入**：使用 `tmp` 文件 + `rename` 机制，断电不会导致文件损坏。
-
-### 5.3 运维 API
-
-* `Reload(domain)`: 丢弃内存修改，强制重读磁盘文件。触发 `ConfigurationReloadedEvent`。
-* `ResetConfig(domain)`: **物理删除**磁盘文件，清空内存。触发 `ConfigurationReloadedEvent`。
-
----
-
-## 6. 🚫 避坑指南 (禁忌事项)
-
-1.  ❌ **禁止手动读写文件**: 严禁使用 `fstream` 私自操作 `configs/` 目录下的文件。这会破坏文件锁，导致数据被覆盖。
-2.  ❌ **不要在循环中 Save**: `Save()` 是磁盘操作。如果你在 `Update()` 循环里每秒调用 60 次 `Save`，性能会爆炸。请仅在关键数据变更时保存。
-3.  ✅ **路径必须 UTF-8**: `LoadConfig` 和 `InitializeService` 的字符串参数在 Windows 上必须是 UTF-8 编码。不要传 GBK 字符串。
-4.  ✅ **默认值必填**: `LoadConfig` 依赖你传入的变量的初始值作为默认值。
-    * 错误：`int port; svc->LoadConfig(..., port);` // port 是随机值！
-    * 正确：`int port = 8080; svc->LoadConfig(..., port);`
-
----
-
-## 7. 🔔 高级技巧：监听热重载
-
-当运维人员手动修改了 JSON 文件，插件如何立即响应？
-
-```cpp
-void Initialize() {
-    // 订阅配置重载事件
-    z3y::SubscribeGlobalEvent<z3y::interfaces::core::ConfigurationReloadedEvent>(
-        shared_from_this(), &MyPlugin::OnConfigChanged
-    );
-}
-
-void OnConfigChanged(const z3y::interfaces::core::ConfigurationReloadedEvent& e) {
-    // 过滤：只处理我关心的文件
-    if (e.domain == "app_main") {
-        Z3Y_LOG_INFO(logger, "检测到配置变更，正在刷新...");
-        
-        // 重新加载配置
-        MyConfig new_cfg;
-        svc->LoadConfig("app_main", "Server", new_cfg);
-        
-        // 应用新配置
-        ApplySettings(new_cfg);
-    }
-}
-```
+**解答**：**绝对不会！** z3y 底层拥有极其强大的 **“占位节点 (Phantom Node)”** 机制。当 UI 提前订阅时，底层会自动创建一个隐形的占位坑。等到 5 秒后相机插件真正调用 `.Default(1000).Bind(...)` 注册时，底层会瞬间将这个坑“转正”，并自动把 `1000` 顺着网线发射给苦苦等待的 UI。
+**结论**：尽情解耦！你无需在任何地方配置插件的启动先后顺序！

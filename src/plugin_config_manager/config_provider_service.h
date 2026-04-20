@@ -1,129 +1,155 @@
-﻿/*
-* Copyright [2025] [Yue Liu]
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
-
-/**
+﻿/**
  * @file config_provider_service.h
- * @brief [实现声明] 工业级配置管理服务实现类。
- * @author Yue Liu
- * @date 2025-11-22
- *
- * @details
- * =============================================================================
- * [维护者指南 (Maintainer Guide)]
- * =============================================================================
- *
- * 1. **架构核心: 基于域的文件管理**
- * - 系统维护一个 `map<Domain, FileContext>`。每个 Domain 对应一个文件，拥有一把独立的读写锁。
- * - **设计意图**: 插件 A 操作 `a.json` 不会阻塞插件 B 操作 `b.json`，最大化并发吞吐量。
- *
- * 2. **关键机制**
- * - **Fail-Fast**: JSON 解析失败时，标记为 Error 并停止处理，**绝对禁止**覆盖默认值，以保留事故现场。
- * - **Soft Dependency**: 尝试获取 LogManager。若失败，自动降级到控制台输出。
- * - **Snapshot Save**: `Save` 操作采用 "Copy-on-Write" 策略，仅在锁内拷贝内存，在锁外执行耗时 IO。
+ * @brief 配置管理模块底层实现声明 (ConfigProviderService)。
+ * * @details
+ * 这是整个配置管理体系的心脏，负责承载基于内存的高并发读写请求以及文件系统的持久化落地。
+ * * 【并发模型与锁策略设计】
+ * 为了应对工业级高频并发场景，本服务采用**极高精度的双重读写锁 (Double-Level
+ * Read-Write Locks)** 结构：
+ * 1. 拓扑锁 (dict_mutex_)：全局唯一的 std::shared_mutex。
+ * - 仅用于保护 `config_dict_` 这个 std::unordered_map
+ * 的增删（也就是节点注册阶段）。
+ * - 当业务查询(GetValue) 或 修改(SetValue)
+ * 某个特定节点时，只持有此全局锁的**共享读锁(shared_lock)**，
+ * 因此不同路径的读写请求可以完全并行，绝不会互相阻塞。
+ * 2. 节点锁 (entry_mutex)：每个 ConfigEntry 内部各自拥有一把
+ * std::shared_mutex。
+ * - 负责保护该节点内部的数据 `current_value` 和回调表 `callbacks`。
+ * - GetValue 时使用节点级共享读锁，SetValue 时使用节点级独占写锁。
+ * * 【未来计划】
+ * - 加入 File Watcher，支持在文件系统被修改时触发基于增量解析的热重载 (Hot
+ * Reload) 机制。
  */
-
 #pragma once
+#ifndef Z3Y_CONFIG_PROVIDER_SERVICE_H_
+#define Z3Y_CONFIG_PROVIDER_SERVICE_H_
 
-#include "framework/z3y_define_impl.h"
-#include "interfaces_core/i_config_service.h"
-#include "interfaces_core/i_log_service.h"
-#include "interfaces_core/z3y_log_macros.h"
-
-#include <nlohmann/json.hpp>
+#include <atomic>
+#include <chrono>
+#include <memory>
 #include <shared_mutex>
-#include <map>
-#include <vector>
-#include <filesystem>
+#include <thread>
+#include <unordered_map>
+#include <nlohmann/json.hpp>
+#include "interfaces_core/i_config_service.h"
+#include "framework/z3y_define_impl.h"
 
 namespace z3y {
-    namespace plugins {
-        namespace config {
+namespace plugins {
+namespace config {
+using namespace z3y::interfaces::core;
 
-            using namespace z3y::interfaces::core;
+/**
+ * @brief 数据节点模型，表示单个配置项在内存中的全部信息。
+ */
+struct ConfigEntry {
+  SchemaMetadata meta; /**< 该节点的 Schema 规则约束 */
+  ConfigValue current_value; /**< 当前处于合法生效状态的值 */
+  ConfigValue default_value; /**< 当重置或节点转正时参考的默认值 */
 
-            class ConfigProviderService : public PluginImpl<ConfigProviderService, IConfigManagerService> {
-            public:
-                Z3Y_DEFINE_COMPONENT_ID("z3y-core-CConfigProvider-UUID-C0000001");
+  mutable std::shared_mutex entry_mutex; /**< [关键] 保护当前这一条记录的超细粒度读写锁 */
 
-                ConfigProviderService();
-                /**
-                 * @brief 析构函数。
-                 * @note 在此处执行最后的 SaveAll 以防止数据丢失（作为最后一道防线）。
-                 */
-                ~ConfigProviderService() override;
+  /** * @brief 存储注册到该节点的所有回调闭包。
+   * key 是一次性生成的自增 id，便于后期 O(1) 复杂度注销。
+   */
+  std::map<uint64_t, std::function<void(const ConfigValue&)>> callbacks;
+};
 
-                bool InitializeService(const std::string& config_root_dir) override;
+/**
+ * @brief 配置核心服务提供者具体实现类。
+ */
+class ConfigProviderService
+    : public z3y::PluginImpl<ConfigProviderService, IConfigService> {
+ public:
+  //! 组件唯一 ID
+  Z3Y_DEFINE_COMPONENT_ID("z3y-core-ConfigProviderService-Impl-UUID-P001");
 
-                // --- 接口实现 ---
-                void LoadConfigRaw(const std::string& domain, const std::string& section_key,
-                    void* user_struct, ConfigReaderFn reader, ConfigWriterFn writer,
-                    ConfigStatus& out_status) override;
+ public:
+  ConfigProviderService();
+  ~ConfigProviderService() override;
 
-                void SetConfigRaw(const std::string& domain, const std::string& section_key,
-                    const void* user_struct, ConfigWriterFn writer) override;
+  /** @brief 框架调用的生命周期初始化钩子。在此处启动独立落盘线程。 */
+  void Initialize() override;
+  /** @brief
+   * 框架调用的生命周期清理钩子。在此处优雅终止落盘线程并执行最后一次刷盘。 */
+  void Shutdown() override;
 
-                bool Save(const std::string& domain) override;
-                bool SaveAll() override;
+  void SetStoragePath(const std::string& absolute_path) override;
 
-                void Reload(const std::string& domain) override;
-                void ReloadAll() override;
-                void ResetConfig(const std::string& domain) override;
-                void ResetAll() override;
+  bool SetValue(const std::string& path, const ConfigValue& value,
+                const std::string& operator_role) override;
+  std::vector<std::string> ApplyBatch(
+      const std::map<std::string, ConfigValue>& changes,
+      const std::string& operator_role) override;
 
-                std::string DumpAll() override;
-                std::vector<std::string> GetLoadedDomains() const override;
+  void RegisterSchema(const std::string& path, const SchemaMetadata& meta,
+                      const ConfigValue& default_val) override;
+  uint64_t InternalSubscribe(
+      const std::string& path,
+      std::function<void(const ConfigValue&)> cb) override;
+  void InternalUnsubscribe(const std::string& path, uint64_t cb_id) override;
+  ConfigValue GetValue(const std::string& path) const override;
 
-            protected:
-                void LogValidationError(const std::string& domain, const std::string& msg) override;
+  std::shared_ptr<void> GetAliveToken() const override { return alive_token_; }
 
-            private:
-                /**
-                 * @struct FileContext
-                 * @brief 单个配置文件的运行时上下文。
-                 */
-                struct FileContext {
-                    std::filesystem::path file_path;
-                    nlohmann::json json_root;
-                    bool is_loaded = false; //!< 懒加载标记
-                    bool is_dirty = false;  //!< 脏标记 (内存已修改未落盘)
-                    mutable std::shared_mutex mutex; //!< 文件级读写锁
-                };
+  std::map<std::string, ConfigSnapshot> GetAllConfigs() const;
 
-                std::shared_ptr<FileContext> GetOrCreateContext(const std::string& domain);
-                nlohmann::json* GetJsonNode(nlohmann::json& root, const std::string& key, bool create_if_missing);
+  bool ReloadFromFile() override;
 
-                /**
-                 * @brief 安全路径检查。
-                 * @return true 如果路径合法 (非绝对路径，且不包含 "..")。
-                 */
-                static bool IsSafePath(const std::string& domain);
+  bool ResetToDefault(const std::string& path) override;
+  void ResetGroupToDefault(const std::string& group_key) override;
+  bool ExportToFile(const std::string& target_path) const override;
+  bool ImportFromFile(const std::string& source_path,
+                      bool apply_immediately = true) override;
+  std::map<std::string, ConfigSnapshot> GetConfigsByGroup(
+      const std::string& group_key) const override;
 
-                // 内部日志包装器 (处理 logger_ 为空的降级逻辑)
-                void LogInfo(const std::string& msg);
-                void LogError(const std::string& msg);
-                void LogWarn(const std::string& msg);
+ private:
+  /** @brief 内部加载逻辑：将 json 读取到初始缓存池 initial_load_cache_ 中。 */
+  void LoadFromFile();
 
-                mutable std::shared_mutex domains_mutex_;
-                std::map<std::string, std::shared_ptr<FileContext>> domains_;
-                std::string root_dir_utf8_;
+  /** * @brief 数据合法性仲裁中心。
+   * @details 校验越界、越权及类型篡改，是抵御外部非法数据的最后防线。
+   */
+  bool ValidateInternal(const ConfigEntry& entry, const ConfigValue& new_val,
+                        const std::string& role, std::string& out_error) const;
 
-                // 软依赖的日志服务句柄 (可能为空)
-                std::shared_ptr<ILogger> logger_;
-            };
+  /** @brief 极速返回的异步保存触发器。只修改标记，不阻塞业务线程。 */
+  void AsyncSaveSnapshot();
 
-        } // namespace config
-    } // namespace plugins
-} // namespace z3y
+   /** * @brief 专属后台 IO 守护线程的核心执行体。
+   * @details 采用带有“睡眠抖动合并”设计的 Wait-Condition
+   * 模型，极大地降低了高频写盘造成的 I/O 开销。
+   */
+  void WorkerRoutine();
+
+ private:
+  /** * @brief 未定型数据孤儿院。
+   * @details 启动时从文件读取的 JSON
+   * 如果尚未被任何业务插件注册（可能插件还没加载，或已被废弃），
+   * 它们会存放在这里。当插件注册时，会从中“认领”属于自己的数据；
+   * 而废弃的数据在落盘时会被原封不动写回，防止升级丢失。
+   */
+  std::unordered_map<std::string, nlohmann::json> initial_load_cache_;
+  std::string config_file_path_ = "config.json"; /**< 真实配置文件存放路径 */
+  std::string config_tmp_path_ = "config.json.tmp"; /**< 用于实现原子覆写的临时文件路径 */
+
+  /** @brief 核心字典拓扑结构：路径字符串映射到共享指针节点。 */
+  std::unordered_map<std::string, std::shared_ptr<ConfigEntry>> config_dict_;
+  mutable std::shared_mutex dict_mutex_; /**< 保护字典拓扑结构的全局读写锁 */
+  std::atomic<uint64_t> next_cb_id_{1}; /**< 全局自增 ID 生成器，用于派发回调句柄 */
+  std::shared_ptr<void> alive_token_;  /**< 框架级防坠网生还标志。生命周期与插件相同 */
+
+  // ---------------- 后台工作线程专属成员 (Worker Thread) ----------------
+  std::thread worker_thread_; /**< 负责落盘操作的实际线程对象 */
+  std::mutex worker_mutex_; /**< 守护下面脏标记和条件变量的专有互斥锁 */
+  std::condition_variable worker_cv_; /**< 用于阻塞和唤醒 Worker 线程 */
+
+  bool is_snapshot_dirty_ = false;  /**< 脏数据标志位，表示内存数据发生改变且未落盘 */
+  bool stop_worker_ = false; /**< 优雅退出标志，接通 Shutdown() 的终止信号 */
+};
+}  // namespace config
+}  // namespace plugins
+}  // namespace z3y
+
+#endif  // Z3Y_CONFIG_PROVIDER_SERVICE_H_
