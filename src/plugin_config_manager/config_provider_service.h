@@ -101,6 +101,8 @@ class ConfigProviderService
   bool ExportToFile(const std::string& target_path) const override;
   bool ImportFromFile(const std::string& source_path,
                       bool apply_immediately = true) override;
+
+  std::vector<std::string> GetAllGroupKeys() const override;
   std::map<std::string, ConfigSnapshot> GetConfigsByGroup(
       const std::string& group_key) const override;
 

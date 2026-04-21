@@ -805,6 +805,65 @@ TEST_F(ConfigProviderTest, SchemaMetadataRetention) {
       << "SubGroupKey 丢失或错误！请检查 ConfigBuilder::SubGroupKey 赋值逻辑。";
 }
 
+TEST_F(ConfigProviderTest, GetAllGroupKeysQuery) {
+  // 【场景】验证 UI 自动生成 Tab 页签所需的全量 GroupKey 查询接口
+  // 这个测试防止未来底层逻辑修改时，错误地把隐藏配置或未分组的杂乱配置暴露给前台
+  // UI。
+
+  // 1. 注册属于 "UI_TAB_CAMERA" 的参数 (两个参数同属一个组，测试是否能正确去重)
+  config_->Builder<int>("Camera.Exposure")
+      .GroupKey("UI_TAB_CAMERA")
+      .Default(100)
+      .RegisterOnly();
+  config_->Builder<int>("Camera.Gain")
+      .GroupKey("UI_TAB_CAMERA")
+      .Default(1)
+      .RegisterOnly();
+
+  // 2. 注册属于 "UI_TAB_MOTION" 的参数 (正常新增一个组)
+  config_->Builder<double>("Motion.Speed")
+      .GroupKey("UI_TAB_MOTION")
+      .Default(50.0)
+      .RegisterOnly();
+
+  // 3. 注册一个隐藏参数：即便它有 GroupKey，也绝对不应该出现在 UI
+  // 的页签列表中！
+  config_->Builder<int>("Core.DebugLevel")
+      .GroupKey("UI_TAB_DEBUG")  // 企图建一个 Debug 页签
+      .Hidden(true)              // 但是被标记为纯后端隐藏
+      .Default(0)
+      .RegisterOnly();
+
+  // 4. 注册一个没有 GroupKey 的散落参数 (也就是 group_key 为空字符串)
+  config_->Builder<std::string>("System.MachineName")
+      .Default("Z3Y_Device")
+      .RegisterOnly();
+
+  // 执行查询：获取所有合法的 Tab 页签
+  std::vector<std::string> groups = config_->GetAllGroupKeys();
+
+  // 【严格断言验证】
+  // 期望只返回 "UI_TAB_CAMERA" 和 "UI_TAB_MOTION"，总共精准等于 2 个
+  ASSERT_EQ(groups.size(), 2)
+      << "返回的 GroupKey "
+         "数量不对！可能是去重失败，或者把隐藏/空分组也加进去了。";
+
+  // 验证期望的两个分组必须存在
+  bool has_camera =
+      std::find(groups.begin(), groups.end(), "UI_TAB_CAMERA") != groups.end();
+  bool has_motion =
+      std::find(groups.begin(), groups.end(), "UI_TAB_MOTION") != groups.end();
+  EXPECT_TRUE(has_camera);
+  EXPECT_TRUE(has_motion);
+
+  // 验证不期望的分组绝对不能出现
+  bool has_debug =
+      std::find(groups.begin(), groups.end(), "UI_TAB_DEBUG") != groups.end();
+  bool has_empty = std::find(groups.begin(), groups.end(), "") != groups.end();
+  EXPECT_FALSE(has_debug) << "致命错误：隐藏参数的 GroupKey 被泄露给了 UI！";
+  EXPECT_FALSE(has_empty) << "致命错误：空字符串被作为一个 GroupKey 返回了！";
+}
+
 // ============================================================================
 // GTest Main 引导入口
 // ============================================================================

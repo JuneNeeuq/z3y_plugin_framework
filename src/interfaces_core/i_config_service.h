@@ -449,6 +449,12 @@ class IConfigService : public virtual z3y::IComponent {
                               bool apply_immediately = true) = 0;
 
   /**
+   * @brief 获取系统中当前所有已注册的非隐藏分组名称。
+   * @return 所有唯一的 GroupKey 列表。用于 UI 自动创建顶层 Tab 页签。
+   */
+  virtual std::vector<std::string> GetAllGroupKeys() const = 0;
+
+  /**
    * @brief 【动态加载优化】仅拉取指定 Group 下的配置快照。
    * @param group_key 目标 Group 的名称。
    * @return std::map<std::string, ConfigSnapshot> 过滤后的快照字典。

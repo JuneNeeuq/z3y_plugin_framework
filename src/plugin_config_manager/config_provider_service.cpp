@@ -19,6 +19,7 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <set>
 
 #include "framework/z3y_framework.h"
 
@@ -997,6 +998,19 @@ bool ConfigProviderService::ImportFromFile(const std::string& source_path,
 // ============================================================================
 // 3. 前端的高级搜索与层级过滤 API
 // ============================================================================
+std::vector<std::string> ConfigProviderService::GetAllGroupKeys() const {
+  std::set<std::string> groups;
+  std::shared_lock<std::shared_mutex> dict_lock(dict_mutex_);
+
+  for (const auto& [path, entry_ptr] : config_dict_) {
+    // 只有非隐藏且设置了 GroupKey 的才返回给 UI
+    std::shared_lock<std::shared_mutex> entry_lock(entry_ptr->entry_mutex);
+    if (!entry_ptr->meta.is_hidden && !entry_ptr->meta.group_key.empty()) {
+      groups.insert(entry_ptr->meta.group_key);
+    }
+  }
+  return std::vector<std::string>(groups.begin(), groups.end());
+}
 
 std::map<std::string, ConfigSnapshot> ConfigProviderService::GetConfigsByGroup(
     const std::string& group_key) const {
