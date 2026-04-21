@@ -72,7 +72,9 @@ namespace z3y {
         do { \
             if ((logger_ptr) && (logger_ptr)->IsEnabled(level)) { \
                 std::string formatted_msg = fmt::format(format_str, __VA_ARGS__); \
-                (logger_ptr)->Log(Z3Y_LOG_SOURCE_LOCATION(), level, formatted_msg); \
+                (logger_ptr)                                        \
+                  ->Log(Z3Y_LOG_SOURCE_LOCATION(), level,         \
+                        formatted_msg.c_str()); \
             } \
         } while(0)
 

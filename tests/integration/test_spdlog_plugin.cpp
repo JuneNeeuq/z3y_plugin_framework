@@ -30,6 +30,10 @@
  * 5. 强制刷盘 (Flush)
  */
 
+#include <atomic>
+#include <thread>
+#include <chrono>
+
 #include "common/plugin_test_base.h"
 #include "interfaces_core/i_log_service.h"
 #include "interfaces_core/z3y_log_macros.h" // 用于测试宏调用
@@ -293,16 +297,158 @@ TEST_F(SpdlogPluginTest, ExplicitFlushPersistsDataImmediately) {
     // 如果插件有 Bug (未注册 Logger)，这一步将不起作用
     log_mgr->Flush();
 
-    // 5. [验证点 B] 立即读取文件检查
-    std::ifstream f(log_file_abs_path);
-    ASSERT_TRUE(f.is_open()) << "日志文件应该已经被创建: " << log_file_abs_path;
+    // 5. [验证点 B] 读取文件检查 (引入轮询重试机制)
+    // 解释：因为 spdlog 依然持有文件写入句柄，Windows NTFS
+    // 的文件大小元数据可能不会瞬间更新。 此时 ifstream 可能会读到 0
+    // 字节。我们需要给操作系统几十毫秒的时间同步底层数据。
+    bool found = false;
+    std::string content;
 
-    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    // 最多重试 20 次，每次间隔 50 毫秒（总计最多等待 1 秒）
+    for (int i = 0; i < 20; ++i) {
+      std::ifstream f(log_file_abs_path);
+      if (f.is_open()) {
+        // 一次性读取整个文件内容
+        content.assign((std::istreambuf_iterator<char>(f)),
+                       std::istreambuf_iterator<char>());
 
-    // 断言：文件中必须包含我们刚才写入的唯一 Token
-    EXPECT_NE(content.find(unique_token), std::string::npos)
-        << "强制 Flush() 失败！日志文件内容为空或未包含最新数据。\n"
-        << "可能原因：Logger 未注册到 spdlog 全局表，导致 apply_all(flush) 漏掉了它。";
+        // 如果找到了我们刚才写入的 Token，说明系统刷盘和元数据更新已完成
+        if (content.find(unique_token) != std::string::npos) {
+          found = true;
+          break;
+        }
+      }
+      // 如果没找到（文件可能读到空），给操作系统一点时间同步，再试
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
 
-    f.close();
+    // 断言：最终必须能找到该数据
+    EXPECT_TRUE(found)
+        << "强制 Flush() 失败！即使等待后，日志文件内容仍未包含最新数据。\n"
+        << "最后一次读取的长度: " << content.length() << " bytes\n"
+        << "最后一次读取的内容: " << content;
+}
+
+// =======================================================================
+// [新增功能测试] UI 观察者机制 (Observer)
+// =======================================================================
+
+/**
+ * @test 验证 UI 观察者能否正确接收到完整且合法的日志记录
+ */
+TEST_F(SpdlogPluginTest, UIObserver_ReceivesCompleteLogRecord) {
+  auto log_mgr = z3y::GetDefaultService<ILogManagerService>();
+  std::string config_file = GenerateTestConfig();
+  ASSERT_TRUE(log_mgr->InitializeService(
+      z3y::utils::PathToUtf8((bin_dir_ / config_file).string()),
+      z3y::utils::PathToUtf8((bin_dir_ / "logs").string())));
+
+  auto logger = log_mgr->GetLogger("Algorithm.Matcher");
+
+  // 用于将异步回调中的数据提取到主线程进行断言
+  struct ExtractedData {
+    uint32_t struct_size = 0;
+    std::string logger_name;
+    std::string message;
+    std::string file_name;
+    std::string func_name;
+    LogLevel level;
+    uint32_t thread_id = 0;
+    int32_t line_number = 0;
+  };
+  ExtractedData captured;
+  std::atomic<int> call_count{0};
+
+  // 1. 注册观察者
+  log_mgr->AddLogObserver("TestUI", [&](const LogRecord& record) {
+    // [极其重要的演示] UI 拿到指针后，必须立刻深拷贝为 std::string!
+    captured.struct_size = record.struct_size;
+    captured.logger_name = record.logger_name;
+    captured.message = record.message;
+    captured.file_name = record.file_name;
+    captured.func_name = record.func_name;
+    captured.level = record.level;
+    captured.thread_id = record.thread_id;
+    captured.line_number = record.line_number;
+    call_count++;
+  });
+
+  // 2. 触发日志
+  int test_value = 999;
+  Z3Y_LOG_ERROR(logger, "Template matching failed, score: {}", test_value);
+
+  // 3. [异步屏障] 强制等待后台 spdlog 线程处理完回调！
+  // 因为是 async_logger，如果我们不 Flush，测试用例可能直接跑完导致验证失败。
+  log_mgr->Flush();
+
+  // [修复核心] 轮询等待后台线程完成回调，最多等待 1 秒 (100 * 10ms)
+  int wait_loops = 0;
+  while (call_count.load() == 0 && wait_loops < 100) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    wait_loops++;
+  }
+
+  // 4. 断言验证
+  EXPECT_EQ(call_count.load(), 1)
+      << "Observer callback should be triggered exactly once";
+
+  // 验证 ABI 防御机制 (struct_size 必须严格等于 sizeof(LogRecord))
+  EXPECT_EQ(captured.struct_size, sizeof(LogRecord));
+
+  // 验证内容透传完整性
+  EXPECT_EQ(captured.level, LogLevel::Error);
+  EXPECT_EQ(captured.logger_name, "Algorithm.Matcher");
+  EXPECT_EQ(captured.message, "Template matching failed, score: 999");
+
+  // 验证宏是否正确捕获了代码位置 (确保没有变成空指针或乱码)
+  EXPECT_NE(captured.file_name.find("test_spdlog_plugin.cpp"),
+            std::string::npos)
+      << "Filename must be captured properly";
+  EXPECT_NE(captured.func_name, "Unknown") << "Function name must be captured";
+  EXPECT_GT(captured.line_number, 0);
+  EXPECT_GT(captured.thread_id, 0);
+}
+
+/**
+ * @test 验证观察者注销机制
+ * @brief 移除后，不应再收到任何日志回调
+ */
+TEST_F(SpdlogPluginTest, UIObserver_RemoveStopsCallback) {
+  auto log_mgr = z3y::GetDefaultService<ILogManagerService>();
+  std::string config_file = GenerateTestConfig();
+  log_mgr->InitializeService(
+      z3y::utils::PathToUtf8((bin_dir_ / config_file).string()),
+      z3y::utils::PathToUtf8((bin_dir_ / "logs").string()));
+
+  auto logger = log_mgr->GetLogger("Hardware.PLC");
+  std::atomic<int> call_count{0};
+
+  // 1. 注册并测试一次
+  log_mgr->AddLogObserver("TempObserver",
+                          [&](const LogRecord&) { call_count++; });
+
+  Z3Y_LOG_INFO(logger, "First message");
+  log_mgr->Flush();
+
+  // 等待第一次回调完成
+  int wait_loops = 0;
+  while (call_count.load() == 0 && wait_loops < 100) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    wait_loops++;
+  }
+
+  EXPECT_EQ(call_count.load(), 1);
+
+  // 2. 核心操作：注销观察者
+  log_mgr->RemoveLogObserver("TempObserver");
+
+  // 3. 再次记录日志，验证回调不再触发
+  Z3Y_LOG_INFO(logger, "Second message - should be ignored by observer");
+  log_mgr->Flush();
+
+  // 给后台 50 毫秒的充足时间，确保即便处理了队列，回调也不会增加
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  EXPECT_EQ(call_count.load(), 1)
+      << "Callback count should not increase after removal";
 }

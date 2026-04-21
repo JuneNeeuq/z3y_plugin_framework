@@ -1,18 +1,18 @@
 ﻿/*
-* Copyright [2025] [Yue Liu]
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright [2025] [Yue Liu]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /**
  * @file i_log_service.h
@@ -34,117 +34,158 @@
 
 #pragma once
 
-#include "framework/z3y_define_interface.h"
 #include <string>
 
+#include "framework/z3y_define_interface.h"
+
 namespace z3y {
-    namespace interfaces {
-        namespace core {
+namespace interfaces {
+namespace core {
 
-            /**
-             * @enum LogLevel
-             * @brief 通用日志级别定义。
-             * @note 实现层必须将其映射到具体库（如 spdlog）的级别。
-             */
-            enum class LogLevel {
-                Trace,
-                Debug,
-                Info,
-                Warn,
-                Error,
-                Fatal
-            };
+/**
+ * @enum LogLevel
+ * @brief 通用日志级别定义。
+ * @note 实现层必须将其映射到具体库（如 spdlog）的级别。
+ */
+enum class LogLevel : int32_t { Trace = 0, Debug, Info, Warn, Error, Fatal };
 
-            /**
-             * @struct LogSourceLocation
-             * @brief 源代码位置信息容器。
-             * @details 用于在日志中记录文件名、行号和函数名。
-             * 通常由 Z3Y_LOG_SOURCE_LOCATION 宏自动生成。
-             */
-            struct LogSourceLocation {
-                const char* file_name;
-                int line_number;
-                const char* function_name;
-            };
+/**
+ * @struct LogSourceLocation
+ * @brief 源代码位置信息容器。
+ * @details 用于在日志中记录文件名、行号和函数名。
+ * 通常由 Z3Y_LOG_SOURCE_LOCATION 宏自动生成。
+ */
+struct LogSourceLocation {
+  const char* file_name;
+  int line_number;
+  const char* function_name;
+};
 
-            /**
-             * @class ILogger
-             * @brief [插件使用] 日志记录器接口。
-             *
-             * @section User 使用者指南
-             * - **获取方式**: 不要直接 `new`，应通过 `ILogManagerService::GetLogger()` 获取。
-             * - **最佳实践**: 建议在插件初始化 (`Initialize`) 时获取并缓存 `PluginPtr<ILogger>`，
-             * 避免在热路径（如高频循环）中重复调用 `GetLogger`。
-             * - **线程安全**: 实现类必须保证 `Log` 方法是线程安全的。
-             */
-            class ILogger : public virtual IComponent {
-            public:
-                Z3Y_DEFINE_INTERFACE(ILogger, "z3y-core-ILogger-IID-L0000002", 1, 0);
+/**
+ * @class ILogger
+ * @brief [插件使用] 日志记录器接口。
+ *
+ * @section User 使用者指南
+ * - **获取方式**: 不要直接 `new`，应通过 `ILogManagerService::GetLogger()`
+ * 获取。
+ * - **最佳实践**: 建议在插件初始化 (`Initialize`) 时获取并缓存
+ * `PluginPtr<ILogger>`， 避免在热路径（如高频循环）中重复调用 `GetLogger`。
+ * - **线程安全**: 实现类必须保证 `Log` 方法是线程安全的。
+ */
+class ILogger : public virtual IComponent {
+ public:
+  Z3Y_DEFINE_INTERFACE(ILogger, "z3y-core-ILogger-IID-L0000002", 1, 0);
 
-                /**
-                 * @brief [高频] 检查指定日志级别是否启用。
-                 * @details 用于在执行昂贵的格式化操作前进行快速检查 (Short-circuit evaluation)。
-                 */
-                virtual bool IsEnabled(LogLevel level) const noexcept = 0;
+  /**
+   * @brief [高频] 检查指定日志级别是否启用。
+   * @details 用于在执行昂贵的格式化操作前进行快速检查 (Short-circuit
+   * evaluation)。
+   */
+  virtual bool IsEnabled(LogLevel level) const noexcept = 0;
 
-                /**
-                 * @brief [底层] 提交日志。
-                 * @warning 即使 level 未启用，此函数也可能被调用。
-                 * 强烈建议使用 `Z3Y_LOG_...` 宏，宏内部会自动先调用 `IsEnabled`。
-                 *
-                 * @param loc 代码位置信息。
-                 * @param level 日志级别。
-                 * @param message 已经格式化好的日志内容 (必须为 UTF-8 编码)。
-                 */
-                virtual void Log(const LogSourceLocation& loc, LogLevel level, const std::string& message) = 0;
-            };
+  /**
+   * @brief [底层] 提交日志。
+   * @warning 即使 level 未启用，此函数也可能被调用。
+   * 强烈建议使用 `Z3Y_LOG_...` 宏，宏内部会自动先调用 `IsEnabled`。
+   *
+   * @param loc 代码位置信息。
+   * @param level 日志级别。
+   * @param message 已经格式化好的日志内容 (必须为 UTF-8 编码)。
+   */
+  virtual void Log(const LogSourceLocation& loc, LogLevel level,
+                   const char* message) = 0;
+};
 
-            /**
-             * @class ILogManagerService
-             * @brief [核心服务] 日志系统管理器。
-             *
-             * @section Maintainer 维护者指南
-             * - **单例模式**: 全局负责管理 spdlog 线程池、Sinks 和 Logger 缓存。
-             * - **生命周期**: 它是宿主程序配置日志系统的唯一入口。
-             * - **职责**: 解析配置、分发 Logger、执行全局 Flush。
-             */
-            class ILogManagerService : public virtual IComponent {
-            public:
-                Z3Y_DEFINE_INTERFACE(ILogManagerService, "z3y-core-ILogManagerService-IID-L0000003", 2, 0);
+/**
+ * @brief [ABI 安全] 全局日志记录结构体
+ */
+struct LogRecord {
+  // [元数据区]
+  uint32_t struct_size;  // 必须是 sizeof(LogRecord)
+  uint32_t version;      // 结构体版本号
 
-                /**
-                 * @brief [宿主调用] 初始化日志系统。
-                 * @param config_file_path 配置文件 (JSON) 的绝对路径。**[必须 UTF-8]**
-                 * @param log_root_directory 日志文件存放的根目录。**[必须 UTF-8]**
-                 * @return true 初始化成功；false 初始化失败 (如配置文件格式错误，此时将回退到控制台输出)。
-                 */
-                virtual bool InitializeService(
-                    const std::string& config_file_path,
-                    const std::string& log_root_directory
-                ) = 0;
+  // [时间与归属]
+  uint64_t timestamp_ms;  // 时间戳 (毫秒)
 
-                /**
-                 * @brief [插件调用] 获取或创建指定名称的日志器。
-                 * @param name 推荐使用分层命名，例如 "Plugins.Camera.Hikvision"。**[必须 UTF-8]**
-                 * 系统将根据配置规则自动匹配输出目标 (Sinks) 和级别。
-                 * @return 永远返回有效的 ILogger 指针 (如果系统未初始化，返回 Fallback Logger)。
-                 */
-                virtual PluginPtr<ILogger> GetLogger(const std::string& name) = 0;
+  // [8字节对齐连续区]
+  const char* logger_name;  // 模块名 (如
+                            // "Halcon.Matcher")。注意：全局静态字符串，安全。
+  const char* message;  // 日志内容。注意：仅在回调触发期间有效！UI必须深拷贝！
+  const char* file_name;  // 源码文件名
+  const char* func_name;  // 报错函数名
 
-                /**
-                 * @brief [运维调用] 动态设置日志级别 (无需重启)。
-                 * @param name_prefix Logger 名称前缀。空字符串代表设置所有 Logger。
-                 * @param level 新的日志级别。
-                 * @details 此设置会持久化到内存中，新创建的符合前缀的 Logger 也会应用此级别。
-                 */
-                virtual void SetLevel(const std::string& name_prefix, LogLevel level) = 0;
+  // [4字节对齐连续区]
+  uint32_t process_id;  // 进程ID
+  uint32_t thread_id;   // 线程ID
+  LogLevel level;       // 日志等级
+  int32_t line_number;  // 行号
 
-                /**
-                 * @brief [运维调用] 强制刷新所有缓冲区到磁盘。
-                 */
-                virtual void Flush() = 0;
-            };
+  // [预留扩展区]
+  uint64_t reserved[4];  // 预留 32 字节，总计 88 字节，完美对齐
+};
 
-        } // namespace core
-    } // namespace interfaces
-} // namespace z3y
+using LogObserverCallback = std::function<void(const LogRecord&)>;
+
+/**
+ * @class ILogManagerService
+ * @brief [核心服务] 日志系统管理器。
+ *
+ * @section Maintainer 维护者指南
+ * - **单例模式**: 全局负责管理 spdlog 线程池、Sinks 和 Logger 缓存。
+ * - **生命周期**: 它是宿主程序配置日志系统的唯一入口。
+ * - **职责**: 解析配置、分发 Logger、执行全局 Flush。
+ */
+class ILogManagerService : public virtual IComponent {
+ public:
+  Z3Y_DEFINE_INTERFACE(ILogManagerService,
+                       "z3y-core-ILogManagerService-IID-L0000003", 3, 0);
+
+  /**
+   * @brief [宿主调用] 初始化日志系统。
+   * @param config_file_path 配置文件 (JSON) 的绝对路径。**[必须 UTF-8]**
+   * @param log_root_directory 日志文件存放的根目录。**[必须 UTF-8]**
+   * @return true 初始化成功；false 初始化失败
+   * (如配置文件格式错误，此时将回退到控制台输出)。
+   */
+  virtual bool InitializeService(const std::string& config_file_path,
+                                 const std::string& log_root_directory) = 0;
+
+  /**
+   * @brief [插件调用] 获取或创建指定名称的日志器。
+   * @param name 推荐使用分层命名，例如 "Plugins.Camera.Hikvision"。**[必须
+   * UTF-8]** 系统将根据配置规则自动匹配输出目标 (Sinks) 和级别。
+   * @return 永远返回有效的 ILogger 指针 (如果系统未初始化，返回 Fallback
+   * Logger)。
+   */
+  virtual PluginPtr<ILogger> GetLogger(const std::string& name) = 0;
+
+  /**
+   * @brief [运维调用] 动态设置日志级别 (无需重启)。
+   * @param name_prefix Logger 名称前缀。空字符串代表设置所有 Logger。
+   * @param level 新的日志级别。
+   * @details 此设置会持久化到内存中，新创建的符合前缀的 Logger 也会应用此级别。
+   */
+  virtual void SetLevel(const std::string& name_prefix, LogLevel level) = 0;
+
+  /**
+   * @brief [运维调用] 强制刷新所有缓冲区到磁盘。
+   */
+  virtual void Flush() = 0;
+
+  /**
+   * @brief 注册全局日志观察者
+   * @param observer_name 观察者名称标识 (如 "UI_MainWindow")
+   * @param callback 回调函数。注意：运行在触发日志的业务线程中！绝不可阻塞！
+   */
+  virtual void AddLogObserver(const std::string& observer_name,
+                              LogObserverCallback callback) = 0;
+
+  /**
+   * @brief 移除观察者
+   */
+  virtual void RemoveLogObserver(const std::string& observer_name) = 0;
+};
+
+}  // namespace core
+}  // namespace interfaces
+}  // namespace z3y

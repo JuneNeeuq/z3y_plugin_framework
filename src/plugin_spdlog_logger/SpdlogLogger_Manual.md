@@ -262,9 +262,49 @@ log_mgr->Flush();
     // Z3Y_LOG_INFO(m_logger, "User " + std::to_string(user_id) + " login...");
     ```
 
+
+## 🖥️ 6. UI 交互与实时监控 (New Feature)
+
+### 6.1 核心数据结构 `LogRecord`
+为了保证 UI 能拿到丰富的信息，回调函数会传递一个 `LogRecord` 结构体：
+- **元数据**: `struct_size`, `version` (用于版本校验)。
+- **上下文**: `timestamp_ms`, `thread_id`, `process_id`, `level` (等级)。
+- **位置**: `file_name`, `func_name`, `line_number` (报错的具体代码位置)。
+- **内容**: `logger_name` (哪个模块发的), `message` (日志文本)。
+
+### 6.2 UI 注册观察者
+UI 模块（如 Qt 窗口）应注册一个回调函数：
+
+```cpp
+// 在 UI 初始化处
+log_mgr->AddLogObserver("MainUI", [](const LogRecord& record) {
+    // 【重要：生命周期警告】
+    // record.message 和 record.file_name 等是指针，仅在回调函数执行期间有效！
+    // UI 必须在这里进行深拷贝（例如转为 std::string 或 QString）
+    
+    std::string msg_copy = record.message;
+    std::string mod_name = record.logger_name;
+
+    // 【重要：线程安全警告】
+    // 此回调运行在日志插件的异步后台线程中，严禁在此直接操作 UI 控件！
+    // 正确做法：将 msg_copy 存入 UI 自己的线程安全队列，然后通过 Timer 刷新。
+});
+```
+
+### 6.3 获取数据与显示
+- **多 Tab 支持**: 检查 `record.logger_name`。你可以根据前缀（如 `Algorithm.`）将日志路由到不同的 Tab 页。
+- **人眼时间转换**: 使用 `record.timestamp_ms`。在 Qt 中可使用 `QDateTime::fromMSecsSinceEpoch()` 转换为可读字符串。
+- **高级过滤**: `LogRecord` 提供了 `level` 枚举，你可以轻松实现“只显示 Warn 以上日志”的勾选功能。
+
+### 6.4 卸载观察者
+在 UI 窗口关闭时，务必注销，防止内存越界：
+```cpp
+log_mgr->RemoveLogObserver("MainUI");
+```
+
 ---
 
-## 🚧 6. 常见问题与禁忌 (FAQ)
+## 🚧 7. 常见问题与禁忌 (FAQ)
 
 ### Q1: `rotating_file_sink` 为什么文件大小没到 `max_size` 就切分了？
 **A**: spdlog 的切分检查是在写入时进行的。如果你的程序在极短时间内崩溃或重启，可能会导致文件未满。另外，请再次检查配置的 `max_size` 单位是否为 **字节**。1MB = 1024*1024 = 1048576，而不是 1。

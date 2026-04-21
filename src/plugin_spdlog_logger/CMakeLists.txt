@@ -7,6 +7,7 @@ set(PLUGIN_SOURCES
   plugin_entry.cpp
   spdlog_provider_service.cpp
   spdlog_provider_service.h
+  spdlog_observer_sink.h
 )
 
 add_library(plugin_spdlog_logger SHARED ${PLUGIN_SOURCES})
