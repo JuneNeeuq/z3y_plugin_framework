@@ -23,6 +23,7 @@ target_link_libraries(
   INTERFACE
   z3y_plugin_manager
   interfaces_core
+  spdlog::spdlog
 )
 
 if(Z3Y_ENABLE_INSTALL)
