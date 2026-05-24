@@ -1,0 +1,67 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "host=x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe"
+      }
+    },
+    {
+      "name": "x64-debug-qt",
+      "displayName": "x64 Debug (Qt UI 开启)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "Z3Y_BUILD_QT_UI": "ON",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.8.3/msvc2022_64"
+      }
+    },
+    {
+      "name": "x64-release-qt",
+      "displayName": "x64 Release (Qt UI 开启)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "Z3Y_BUILD_QT_UI": "ON",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.8.3/msvc2022_64"
+      }
+    },
+    {
+      "name": "x64-debug-no-qt",
+      "displayName": "x64 Debug (纯 C++ 算法版)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "Z3Y_BUILD_QT_UI": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x64-debug-qt",
+      "configurePreset": "x64-debug-qt"
+    },
+    {
+      "name": "x64-release-qt",
+      "configurePreset": "x64-release-qt"
+    },
+    {
+      "name": "x64-debug-no-qt",
+      "configurePreset": "x64-debug-no-qt"
+    }
+  ]
+}

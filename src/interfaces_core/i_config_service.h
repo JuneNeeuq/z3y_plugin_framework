@@ -24,15 +24,25 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <vector>
-#include "framework/i_component.h"
+
 #include "config_types.h"
+#include "framework/i_component.h"
 
 namespace z3y {
 namespace interfaces {
 namespace core {
 class IConfigService;
+
+// 用于嗅探标准容器的 Traits 模板
+template <typename T>
+struct is_std_vector : std::false_type {};
+template <typename T, typename A>
+struct is_std_vector<std::vector<T, A>> : std::true_type {};
+template <typename T>
+inline constexpr bool is_std_vector_v = is_std_vector<T>::value;
 
 /**
  * @brief 类型擦除辅助工具：将任意 C++ 业务类型安全转换为底层的 ConfigValue。
@@ -48,6 +58,26 @@ inline ConfigValue ToConfigValue(const T& val) {
     return static_cast<int64_t>(val);
   } else if constexpr (std::is_floating_point_v<T>) {
     return static_cast<double>(val);
+  } else if constexpr (is_std_vector_v<T>) {
+    using ElementType = typename T::value_type;
+    if constexpr (std::is_integral_v<ElementType>) {
+      std::vector<int64_t> vec;
+      vec.reserve(val.size());
+      for (auto v : val) vec.push_back(static_cast<int64_t>(v));
+      return vec;
+    } else if constexpr (std::is_floating_point_v<ElementType>) {
+      std::vector<double> vec;
+      vec.reserve(val.size());
+      for (auto v : val) vec.push_back(static_cast<double>(v));
+      return vec;
+    } else if constexpr (std::is_same_v<ElementType, std::string>) {
+      return val;
+    } else {
+      return val;
+    }
+  } else if constexpr (std::is_convertible_v<T, std::string> &&
+                       !std::is_same_v<T, bool>) {
+    return static_cast<std::string>(val);
   } else {
     return val;
   }
@@ -73,6 +103,25 @@ inline T FromConfigValue(const ConfigValue& val, const T& fallback) {
       return static_cast<T>(std::get<int64_t>(val));
     } else if constexpr (std::is_floating_point_v<T>) {
       return static_cast<T>(std::get<double>(val));
+    } else if constexpr (is_std_vector_v<T>) {
+      using ElementType = typename T::value_type;
+      if constexpr (std::is_integral_v<ElementType>) {
+        const auto& vec = std::get<std::vector<int64_t>>(val);
+        T res;
+        res.reserve(vec.size());
+        for (auto v : vec) res.push_back(static_cast<ElementType>(v));
+        return res;
+      } else if constexpr (std::is_floating_point_v<ElementType>) {
+        const auto& vec = std::get<std::vector<double>>(val);
+        T res;
+        res.reserve(vec.size());
+        for (auto v : vec) res.push_back(static_cast<ElementType>(v));
+        return res;
+      } else if constexpr (std::is_same_v<ElementType, std::string>) {
+        return std::get<std::vector<std::string>>(val);
+      } else {
+        return std::get<T>(val);
+      }
     } else {
       return std::get<T>(val);
     }
@@ -154,6 +203,17 @@ class ConfigBuilder {
     meta_.widget_type = type;
     return *this;
   }
+
+  ConfigBuilder& CustomUI(const std::string& custom_ui_key) {
+    meta_.custom_ui_key = custom_ui_key;
+    return *this;
+  }
+
+  ConfigBuilder& CustomArgs(const std::string& json_args) {
+    meta_.custom_args = json_args;
+    return *this;
+  }
+
   ConfigBuilder& ReadOnly(bool is_read_only) {
     meta_.read_only = is_read_only;
     return *this;
@@ -180,7 +240,6 @@ class ConfigBuilder {
     return *this;
   }
 
-  // 修复：彻底解决 variant 的歧义隐式转换报错
   ConfigBuilder& Default(const T& val) {
     default_val_ = ToConfigValue(val);
     return *this;
@@ -212,20 +271,11 @@ class ConfigBuilder {
     // 利用 C++ Lambda 的捕获机制，进行“类型擦除式”的安全封装
     meta_.custom_validator =
         [val_fn = std::move(val_fn)](const ConfigValue& val) -> std::string {
+      if (std::holds_alternative<std::monostate>(val)) return "";
       try {
-        // 利用 constexpr 抹平枚举和基础整型到底层 int64_t / double 的差异
-        if constexpr (std::is_enum_v<T>) {
-          return val_fn(static_cast<T>(std::get<int64_t>(val)));
-        } else if constexpr (std::is_integral_v<T> &&
-                             !std::is_same_v<T, bool>) {
-          return val_fn(static_cast<T>(std::get<int64_t>(val)));
-        } else if constexpr (std::is_floating_point_v<T>) {
-          return val_fn(static_cast<T>(std::get<double>(val)));
-        } else {
-          return val_fn(std::get<T>(val));
-        }
+        T parsed_val = FromConfigValue<T>(val, T{});
+        return val_fn(parsed_val);
       } catch (...) {
-        // 极小概率防御：如果在 ValidateInternal 之前发生了内存错乱，安全驳回
         return "Validator execution error: Underlying data type mismatch.";
       }
     };
@@ -247,7 +297,7 @@ class ConfigBuilder {
    * @note
    * 调用此函数后，回调会被**立即执行一次**，以传入当前系统中的初始值回填业务。
    */
-  ScopedConnection Bind(std::function<void(const T&)> callback);
+  [[nodiscard]] ScopedConnection Bind(std::function<void(const T&)> callback);
 
  private:
   IConfigService* service_; /**< 后台服务指针 */
@@ -262,6 +312,7 @@ class ConfigBuilder {
 struct ConfigSnapshot {
   SchemaMetadata meta; /**< 模式元数据 (指引如何画界面) */
   ConfigValue current_value; /**< 当前系统生效值 (回填界面的状态) */
+  ConfigValue default_value;  // [修复] 加入默认值，支撑细粒度UI重置
 };
 
 /**
@@ -330,8 +381,8 @@ class IConfigService : public virtual z3y::IComponent {
    * @details 通常用于插件之间监听对方的数据变化，而不具备注册权。
    */
   template <typename T>
-  ScopedConnection Subscribe(const std::string& path,
-                             std::function<void(const T&)> callback);
+  [[nodiscard]] ScopedConnection Subscribe(
+      const std::string& path, std::function<void(const T&)> callback);
 
   /**
    * @brief 裸写接口：向某个路径下发一个新值。
@@ -496,19 +547,15 @@ class IConfigService : public virtual z3y::IComponent {
 template <typename T>
 auto CreateTypeSafeWrapper(std::string path, std::function<void(const T&)> cb) {
   return [cb = std::move(cb), p = std::move(path)](const ConfigValue& val) {
-    if constexpr (std::is_enum_v<T>) {
+    if (std::holds_alternative<std::monostate>(val)) return;
+
+    if constexpr (std::is_enum_v<T> ||
+                  (std::is_integral_v<T> && !std::is_same_v<T, bool>)) {
       if (std::holds_alternative<int64_t>(val)) {
         cb(static_cast<T>(std::get<int64_t>(val)));
       } else {
-        throw std::invalid_argument("ConfigType Mismatch [Enum] for path: " +
-                                    p);
-      }
-    } else if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
-      if (std::holds_alternative<int64_t>(val)) {
-        cb(static_cast<T>(std::get<int64_t>(val)));
-      } else {
-        throw std::invalid_argument("ConfigType Mismatch [Integer] for path: " +
-                                    p);
+        throw std::invalid_argument(
+            "ConfigType Mismatch [Enum/Int] for path: " + p);
       }
     } else if constexpr (std::is_floating_point_v<T>) {
       if (std::holds_alternative<double>(val)) {
@@ -516,6 +563,41 @@ auto CreateTypeSafeWrapper(std::string path, std::function<void(const T&)> cb) {
       } else {
         throw std::invalid_argument("ConfigType Mismatch [Double] for path: " +
                                     p);
+      }
+    } else if constexpr (is_std_vector_v<T>) {
+      using ElementType = typename T::value_type;
+      if constexpr (std::is_integral_v<ElementType>) {
+        if (std::holds_alternative<std::vector<int64_t>>(val)) {
+          const auto& vec = std::get<std::vector<int64_t>>(val);
+          T res;
+          res.reserve(vec.size());
+          for (auto v : vec) res.push_back(static_cast<ElementType>(v));
+          cb(res);
+        } else
+          throw std::invalid_argument(
+              "ConfigType Mismatch [Int Vector] for path: " + p);
+      } else if constexpr (std::is_floating_point_v<ElementType>) {
+        if (std::holds_alternative<std::vector<double>>(val)) {
+          const auto& vec = std::get<std::vector<double>>(val);
+          T res;
+          res.reserve(vec.size());
+          for (auto v : vec) res.push_back(static_cast<ElementType>(v));
+          cb(res);
+        } else
+          throw std::invalid_argument(
+              "ConfigType Mismatch [Double Vector] for path: " + p);
+      } else if constexpr (std::is_same_v<ElementType, std::string>) {
+        if (std::holds_alternative<std::vector<std::string>>(val)) {
+          cb(std::get<std::vector<std::string>>(val));
+        } else
+          throw std::invalid_argument(
+              "ConfigType Mismatch [String Vector] for path: " + p);
+      } else {
+        if (std::holds_alternative<T>(val))
+          cb(std::get<T>(val));
+        else
+          throw std::invalid_argument(
+              "ConfigType Mismatch [Variant] for path: " + p);
       }
     } else {
       if (std::holds_alternative<T>(val)) {
@@ -534,13 +616,11 @@ ScopedConnection ConfigBuilder<T>::Bind(
   service_->RegisterSchema(path_, meta_, default_val_);
 
   auto wrapper_cb = CreateTypeSafeWrapper<T>(path_, std::move(callback));
-  // 重要逻辑：绑定成功后，立刻手动调用一次包装器，将系统的初始值“注入”给业务层
   wrapper_cb(service_->GetValue(path_));
 
   uint64_t id = service_->InternalSubscribe(path_, wrapper_cb);
   std::weak_ptr<void> alive = service_->GetAliveToken();
 
-  // RAII 控制：打包断开逻辑。并利用 alive.expired() 拦截框架析构时的乱序风险
   return ScopedConnection([service = service_, p = path_, id, alive]() {
     if (auto token = alive.lock()) {
       service->InternalUnsubscribe(p, id);

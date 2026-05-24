@@ -31,6 +31,15 @@ namespace plugins {
 namespace config {
 
 namespace {
+// 全局死循环保护机制：通过线程级单例贯穿所有事务流
+thread_local int g_recursion_depth = 0;
+thread_local bool g_has_cyclic_error = false;
+
+struct RecursionGuard {
+  RecursionGuard() { g_recursion_depth++; }
+  ~RecursionGuard() { g_recursion_depth--; }
+};
+
 /**
  * @brief 将严格变体类型降维序列化为无类型的 JSON 结构。
  */
@@ -57,8 +66,6 @@ bool JsonToConfigValue(const nlohmann::json& j, const ConfigValue& reference,
   try {
     // 强制检查 reference 里的变体存的是什么类型，必须用同样的方法读取 JSON
     if (std::holds_alternative<int64_t>(reference)) {
-      // 风险防范：若 JSON 里是 1.5 却强求整型，这里在 get 时可能抛异常，外部会
-      // catch
       out_val = j.get<int64_t>();
       return true;
     }
@@ -217,11 +224,27 @@ void ConfigProviderService::RegisterSchema(const std::string& path,
   // [第三阶段] 无锁化回调派发区。
   // 不要在锁里调用未知业务 Lambda！它可能在里面又调用了一次 GetValue
   // 导致同一把锁死锁重入。
-  for (const auto& cb : callbacks_to_notify) {
-    try {
-      cb(initial_actual_val);
-    } catch (...) {
-      // 隔离业务端故障，保证核心模块不随之崩溃
+  if (!callbacks_to_notify.empty()) {
+    if (g_recursion_depth == 0) {
+      g_has_cyclic_error = false;
+    }
+    if (g_recursion_depth > 5) {
+      std::cerr << "[Config Error] Maximum recursion depth exceeded during RegisterSchema." << std::endl;
+      g_has_cyclic_error = true;
+      return;
+    }
+    
+    RecursionGuard guard;
+    for (const auto& cb : callbacks_to_notify) {
+      try {
+        cb(initial_actual_val);
+      } catch (...) {
+        // 隔离业务端故障，保证核心模块不随之崩溃
+      }
+    }
+    
+    if (g_has_cyclic_error) {
+      return;
     }
   }
 }
@@ -329,45 +352,37 @@ bool ConfigProviderService::SetValue(const std::string& path,
   }
 
   // 【安全墙：循环递归死锁保护】
-  // 假想极端场景：插件 A 在回调中设置 B 的值，插件 B 在回调里又设置 A 的值。
-  // 通过 thread_local 计数可将堆栈溢出扼杀在摇篮里。
-  thread_local int recursion_depth = 0;
-  thread_local bool has_cyclic_error = false;  // 新增：全局死循环污染标记
-
-  // 1. 如果是最外层调用，初始化/重置污染标记
-  if (recursion_depth == 0) {
-    has_cyclic_error = false;
-  }
-
-  if (recursion_depth > 3) {
-    std::cerr << "[Config Error] Maximum recursion depth exceeded, potential "
-                 "cyclic update detected at path:"
-              << path << std::endl;
-    has_cyclic_error = true;  // 标记当前调用链已被死循环污染
-    return false;
-  }
-
-  // 在锁范围之外执行真正的回调，极度安全
-  recursion_depth++;
-  for (const auto& cb : callbacks_to_run) {
-    try {
-      cb(validated_val);
-    } catch (const std::exception& e) {
-      // 防止某个不讲武德的插件在回调里抛出异常，把整个配置服务搞崩
-      std::cerr
-          << "[Config Error] Exception thrown during plugin callback execution:"
-          << e.what() << std::endl;
-    } catch (...) {
-      std::cerr << "[Config Error] Unknown exception thrown during plugin "
-                   "callback execution."
-                << std::endl;
+  if (!callbacks_to_run.empty()) {
+    if (g_recursion_depth == 0) {
+      g_has_cyclic_error = false;
     }
-  }
-  recursion_depth--;
 
-  // 3. 【核心修复】：如果子树中检测到了死循环，剥夺最外层的成功返回值
-  if (has_cyclic_error) {
-    return false;
+    if (g_recursion_depth > 5) {
+      std::cerr << "[Config Error] Maximum recursion depth exceeded, potential cyclic update detected at path: "
+                << path << std::endl;
+      g_has_cyclic_error = true;  
+      return false;
+    }
+
+    RecursionGuard guard;
+    for (const auto& cb : callbacks_to_run) {
+      try {
+        cb(validated_val);
+      } catch (const std::exception& e) {
+        // 防止某个不讲武德的插件在回调里抛出异常，把整个配置服务搞崩
+        std::cerr
+            << "[Config Error] Exception thrown during plugin callback execution:"
+            << e.what() << std::endl;
+      } catch (...) {
+        std::cerr << "[Config Error] Unknown exception thrown during plugin "
+                     "callback execution."
+                  << std::endl;
+      }
+    }
+
+    if (g_has_cyclic_error) {
+      return false;
+    }
   }
 
   // 无锁广播审计事件！
@@ -463,14 +478,33 @@ std::vector<std::string> ConfigProviderService::ApplyBatch(
     }
   }  // <--- guard 在这里超出作用域析构，所有的节点锁被安全释放！
 
-  // ================= [完全无锁的派发区域] =================
+  // 【全局死循环防爆栈保护】
+  if (!batch_callbacks.empty()) {
+    if (g_recursion_depth == 0) {
+      g_has_cyclic_error = false;
+    }
 
-  // 1. 触发所有收集到的回调任务
-  for (const auto& task : batch_callbacks) {
-    try {
-      (*(task.cb))(task.val);
-    } catch (...) {
-      // 隔离业务端抛出的异常
+    if (g_recursion_depth > 5) {
+      std::cerr << "[Config Error] Maximum recursion depth exceeded during batch update, potential cyclic update detected." << std::endl;
+      g_has_cyclic_error = true;
+      return {"Cyclic update detected."};
+    }
+
+    RecursionGuard guard;
+
+    // ================= [完全无锁的派发区域] =================
+
+    // 1. 触发所有收集到的回调任务
+    for (const auto& task : batch_callbacks) {
+      try {
+        (*(task.cb))(task.val);
+      } catch (...) {
+        // 隔离业务端抛出的异常
+      }
+    }
+
+    if (g_has_cyclic_error) {
+      return {"Cyclic update detected."};
     }
   }
 
@@ -527,11 +561,7 @@ void ConfigProviderService::LoadFromFile() {
       for (auto& el : root.items()) {
         initial_load_cache_[el.key()] = el.value();  // 全量搬入未定型缓存池
       }
-      std::cout << "[Config IO] Configuration file loaded successfully, parsed "
-                << initial_load_cache_.size() << " nodes." << std::endl;
-    } catch (const std::exception& e) {
-      std::cerr << "[Config IO Error] Configuration file format corrupted: "
-                << e.what() << std::endl;
+    } catch (...) {
     }
   }
 }
@@ -571,9 +601,7 @@ bool ConfigProviderService::ValidateInternal(const ConfigEntry& entry,
       out_error = "Value exceeds the allowed maximum.";
       return false;
     }
-  }
-  // 针对 double 类型的边界校验
-  else if (std::holds_alternative<double>(new_val)) {
+  } else if (std::holds_alternative<double>(new_val)) {
     double val = std::get<double>(new_val);
     if (std::holds_alternative<double>(entry.meta.min_val) &&
         val < std::get<double>(entry.meta.min_val)) {
@@ -585,9 +613,7 @@ bool ConfigProviderService::ValidateInternal(const ConfigEntry& entry,
       out_error = "Floating-point value exceeds the allowed maximum.";
       return false;
     }
-  }
-  // 【新增】：针对整型数组的边界校验
-  else if (std::holds_alternative<std::vector<int64_t>>(new_val)) {
+  } else if (std::holds_alternative<std::vector<int64_t>>(new_val)) {
     const auto& vec = std::get<std::vector<int64_t>>(new_val);
     for (size_t i = 0; i < vec.size(); ++i) {
       if (std::holds_alternative<int64_t>(entry.meta.min_val) &&
@@ -603,9 +629,7 @@ bool ConfigProviderService::ValidateInternal(const ConfigEntry& entry,
         return false;
       }
     }
-  }
-  // 【新增】：针对浮点型数组的边界校验
-  else if (std::holds_alternative<std::vector<double>>(new_val)) {
+  } else if (std::holds_alternative<std::vector<double>>(new_val)) {
     const auto& vec = std::get<std::vector<double>>(new_val);
     for (size_t i = 0; i < vec.size(); ++i) {
       if (std::holds_alternative<double>(entry.meta.min_val) &&
@@ -684,10 +708,7 @@ void ConfigProviderService::WorkerRoutine() {
       std::shared_lock<std::shared_mutex> dict_lock(dict_mutex_);
       for (const auto& kv : config_dict_) {
         std::shared_lock<std::shared_mutex> entry_lock(kv.second->entry_mutex);
-        // 注释掉的隐藏参数过滤：底层数据库持久化时不挑剔是否展示给 UI
-        // if (!kv.second->meta.is_hidden) {
         io_snapshot[kv.first] = kv.second->current_value;
-        // }
       }
     }
 
@@ -712,7 +733,7 @@ void ConfigProviderService::WorkerRoutine() {
       // 先写到一个不存在的 .tmp 文件中。
       std::ofstream ofs(config_tmp_path_, std::ios::trunc);
       if (ofs.is_open()) {
-        ofs << root.dump(4);  // 4个空格的漂亮缩进
+        ofs << root.dump(4);
         ofs.close();
 
         // 使用操作系统级的重命名接口。
@@ -725,9 +746,7 @@ void ConfigProviderService::WorkerRoutine() {
                     << std::endl;
         }
       }
-    } catch (const std::exception& e) {
-      std::cerr << "[Config IO Fatal] Serialization crashed: " << e.what()
-                << std::endl;
+    } catch (...) {
     }
 
     // 检测到框架正在下达逐客令，处理完最后一次脏数据便结束自己的一生
@@ -748,10 +767,8 @@ bool ConfigProviderService::ReloadFromFile() {
   nlohmann::json root;
   try {
     ifs >> root;
-  } catch (const nlohmann::json::exception& e) {
-    std::cerr << "[Config Error] Reload failed: JSON parse error: " << e.what()
-              << std::endl;
-    return false;  // 严格拦截：文件损坏时不破坏当前内存任何状态
+  } catch (...) {
+    return false;
   }
 
   // 【核心设计 1：闭包收集器】
@@ -847,15 +864,31 @@ bool ConfigProviderService::ReloadFromFile() {
 
   // 【核心设计 6：无锁派发回调】
   // 锁已经全部释放，业务线程畅通无阻。现在安全地触发所有回调。
-  for (const auto& task : callbacks_to_run) {
-    try {
-      task.cb(task.val);
-    } catch (const std::exception& e) {
-      std::cerr << "[Config Error] Exception in Reload callback: " << e.what()
-                << std::endl;
-    } catch (...) {
-      std::cerr << "[Config Error] Unknown exception in Reload callback."
-                << std::endl;
+  if (!callbacks_to_run.empty()) {
+    if (g_recursion_depth == 0) {
+      g_has_cyclic_error = false;
+    }
+    if (g_recursion_depth > 5) {
+      std::cerr << "[Config Error] Maximum recursion depth exceeded during ReloadFromFile." << std::endl;
+      g_has_cyclic_error = true;
+      return false;
+    }
+
+    RecursionGuard guard;
+    for (const auto& task : callbacks_to_run) {
+      try {
+        task.cb(task.val);
+      } catch (const std::exception& e) {
+        std::cerr << "[Config Error] Exception in Reload callback: " << e.what()
+                  << std::endl;
+      } catch (...) {
+        std::cerr << "[Config Error] Unknown exception in Reload callback."
+                  << std::endl;
+      }
+    }
+
+    if (g_has_cyclic_error) {
+      return false;
     }
   }
 
@@ -965,9 +998,7 @@ bool ConfigProviderService::ExportToFile(const std::string& target_path) const {
     ofs << root.dump(4);
     ofs.close();
     return true;
-  } catch (const std::exception& e) {
-    std::cerr << "[Config Fatal] ExportToFile failed: " << e.what()
-              << std::endl;
+  } catch (...) {
     return false;
   }
 }
@@ -1023,7 +1054,9 @@ std::map<std::string, ConfigSnapshot> ConfigProviderService::GetConfigsByGroup(
 
     // 双重过滤：1. 隐藏参数不给前端 ； 2. Group 名称必须匹配
     if (!entry_ptr->meta.is_hidden && entry_ptr->meta.group_key == group_key) {
-      result[path] = {entry_ptr->meta, entry_ptr->current_value};
+      // 【修复】注入出厂默认值
+      result[path] = {entry_ptr->meta, entry_ptr->current_value,
+                      entry_ptr->default_value};
     }
   }
 

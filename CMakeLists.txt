@@ -51,10 +51,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # 编译选项配置 (Build Options)
 # ==============================================================================
 # option(变量名 "描述" 默认值)
-option(Z3Y_BUILD_DEMOS "Build demo plugins and examples" OFF) # 默认关闭
-option(Z3Y_BUILD_TOOLS "Build auxiliary tools like benchmarks" OFF) # 默认关闭
-option(Z3Y_BUILD_HOST_CONSOLE "Build the host console demo" OFF) # 默认关闭
-option(Z3Y_BUILD_TESTS "Build unit and integration tests" OFF)
+option(Z3Y_BUILD_DEMOS "Build demo plugins and examples" ON) # 默认关闭
+option(Z3Y_BUILD_TOOLS "Build auxiliary tools like benchmarks" ON) # 默认关闭
+option(Z3Y_BUILD_HOST_CONSOLE "Build the host console demo" ON) # 默认关闭
+option(Z3Y_BUILD_TESTS "Build unit and integration tests" ON)
+# Qt 插件编译开关 (默认关闭，零依赖)
+option(Z3Y_BUILD_QT_UI "Build the Qt based Configuration UI Plugin" ON)
 
 # ==============================================================================
 # 2. 编译器与运行时环境配置 (ABI 兼容性的基石)
@@ -184,6 +186,18 @@ add_subdirectory(src/plugin_config_manager) # 配置服务
 
 add_subdirectory(src/interfaces_profiler) # 性能分析工具
 add_subdirectory(src/plugin_profiler)
+
+# 暴露纯 C++ UI 契约 (所有插件都能看到，无需 Qt 环境)
+add_subdirectory(src/interfaces_ui)
+
+if(Z3Y_BUILD_QT_UI)
+    message(STATUS "Qt UI Plugin is ENABLED. Looking for Qt6...")
+    # 查找 Qt6 核心组件
+    find_package(Qt6 COMPONENTS Core Widgets Gui REQUIRED)
+    add_subdirectory(src/plugin_qt_config_ui)
+else()
+    message(STATUS "Qt UI Plugin is DISABLED. Zero Qt dependencies.")
+endif()
 
 # 5.3 演示/示例代码 (Demo & Examples)
 if(Z3Y_BUILD_DEMOS)
