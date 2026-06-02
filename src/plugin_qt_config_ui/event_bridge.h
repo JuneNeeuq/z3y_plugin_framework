@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file event_bridge.h
  * @brief 后台数据与前端 UI 之间的跨线程事件桥接器声明。
  *

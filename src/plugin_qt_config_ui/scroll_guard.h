@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file scroll_guard.h
  * @brief Qt 界面滑轮交互防护过滤器。
  *
@@ -14,6 +14,8 @@
 #include <QEvent>
 #include <QObject>
 #include <QWidget>
+#include <QWheelEvent>
+#include <QCoreApplication>
 
 namespace z3y {
 namespace plugins {
@@ -34,7 +36,14 @@ class ScrollGuardFilter : public QObject {
     if (event->type() == QEvent::Wheel) {
       QWidget* widget = qobject_cast<QWidget*>(obj);
       if (widget && !widget->hasFocus()) {
-        event->ignore(); // 直接忽略这个滚动行为，使其抛给更上层的可滚动面板
+        event->ignore(); // 直接忽略这个滚动行为
+        // 因为我们在事件过滤器中如果返回 true 会彻底阻断事件的传播（也不会冒泡给父窗口）
+        // 这样会导致滚轮滑到这里时界面就无法滚动了，有一种被卡住的感觉
+        // 所以我们需要在这里手动将滚轮事件透传给它的父容器，直到被 QScrollArea 接收
+        if (widget->parentWidget()) {
+            QWheelEvent* wheelEvent = static_cast<QWheelEvent*>(event);
+            QCoreApplication::sendEvent(widget->parentWidget(), wheelEvent);
+        }
         return true;
       }
     }

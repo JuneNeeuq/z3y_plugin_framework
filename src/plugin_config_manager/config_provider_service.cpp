@@ -523,6 +523,25 @@ std::vector<std::string> ConfigProviderService::ApplyBatch(
   return errors;
 }
 
+bool ConfigProviderService::UpdateEnumSchema(const std::string& path, 
+                                             const std::vector<std::string>& new_values, 
+                                             const std::vector<std::string>& new_display_keys) {
+  std::shared_ptr<ConfigEntry> target_entry;
+  {
+    std::shared_lock<std::shared_mutex> dict_lock(dict_mutex_);
+    auto it = config_dict_.find(path);
+    if (it == config_dict_.end()) return false;
+    target_entry = it->second;
+  }
+  {
+    std::unique_lock<std::shared_mutex> entry_lock(target_entry->entry_mutex);
+    target_entry->meta.enum_values = new_values;
+    target_entry->meta.enum_display_keys = new_display_keys;
+    target_entry->meta.widget_type = z3y::interfaces::core::WidgetType::kComboBox;
+  }
+  return true;
+}
+
 std::map<std::string, ConfigSnapshot> ConfigProviderService::GetAllConfigs()
     const {
   std::map<std::string, ConfigSnapshot> result;

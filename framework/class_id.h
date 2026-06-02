@@ -36,7 +36,7 @@
  * 这使得所有比较（例如在 `QueryInterfaceRaw` 中）都只是整数比较，
  * 避免了运行时的 `strcmp` 或 `std::map` 查找，性能极高。
  */
-
+#include <cstdint>
 #pragma once
 
 #ifndef Z3Y_FRAMEWORK_CLASS_ID_H_

@@ -190,9 +190,12 @@ namespace z3y {
     PluginManager::LibHandle PluginManager::PlatformLoadLibrary(
         const std::filesystem::path& path) {
         // [设计]
-        // 使用 LoadLibraryW 来正确处理宽字符 (UTF-16) 路径，
+        // 使用 LoadLibraryExW 配合 LOAD_WITH_ALTERED_SEARCH_PATH 标志。
+        // 这指示 Windows 在解析 DLL 的依赖项时，
+        // 将被加载 DLL 所在的目录作为主要搜索目录之一。
+        // 极大地增强了在不同工作目录（如 IDE 调试）下的加载鲁棒性。
         // `path.c_str()` (C++17) 自动提供了 `const wchar_t*`。
-        return ::LoadLibraryW(path.c_str());
+        return ::LoadLibraryExW(path.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
     }
 
     /**

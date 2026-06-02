@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file config_main_window.h
  * @brief Qt 配置系统主界面的核心类声明。
  *

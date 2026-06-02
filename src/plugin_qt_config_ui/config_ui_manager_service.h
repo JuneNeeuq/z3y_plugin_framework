@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file config_ui_manager_service.h
  * @brief Qt 配置UI管理器服务的具体实现声明。
  *

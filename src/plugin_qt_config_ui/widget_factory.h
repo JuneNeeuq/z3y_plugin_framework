@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file widget_factory.h
  * @brief 工厂类：负责将后台定义的纯数据类型，自动变幻映射出前端所需的 Qt UI 控件。
  *

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file profiler_types.h
  * @brief 性能分析插件的基础数据结构定义。
  * * @details

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file config_ui_manager_service.cpp
  * @brief Qt 配置UI管理器服务的具体实现代码。
  *
@@ -41,6 +41,10 @@ void ConfigUIManagerService::Shutdown() {
 }
 
 void ConfigUIManagerService::ShowConfigWindow(void* parent) {
+  // 触发 UI 即将打开的全局事件，让各业务模块能在这里动态刷新字典 (UpdateEnumSchema)
+  z3y::interfaces::core::ConfigUIAboutToOpenEvent evt;
+  evt.timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  z3y::FireGlobalEvent<z3y::interfaces::core::ConfigUIAboutToOpenEvent>(evt);
   // 懒加载：只有当用户第一次要求显示窗口时，才去创建事件桥接器和主窗口
   if (!event_bridge_) {
     event_bridge_ = std::make_unique<EventBridge>();

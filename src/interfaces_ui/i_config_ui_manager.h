@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file i_config_ui_manager.h
  * @brief 系统配置中心界面的核心接口定义。
  *

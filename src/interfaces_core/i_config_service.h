@@ -406,6 +406,17 @@ class IConfigService : public virtual z3y::IComponent {
       const std::map<std::string, ConfigValue>& changes,
       const std::string& operator_role = "") = 0;
 
+  /**
+   * @brief 动态更新枚举类型下拉框的元数据选项（支持热更新）
+   * @param path 目标配置路径
+   * @param new_values 新的后端真实值列表
+   * @param new_display_keys 新的前端展示文本列表
+   * @return bool 是否更新成功
+   */
+  virtual bool UpdateEnumSchema(const std::string& path, 
+                                const std::vector<std::string>& new_values, 
+                                const std::vector<std::string>& new_display_keys) = 0;
+
     /**
    * @brief 高频读接口：主动获取指定路径当前生效的强类型值。
    * @tparam T 期待返回的强类型。

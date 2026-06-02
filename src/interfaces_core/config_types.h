@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file config_types.h
  * @brief 配置管理模块的基础类型与数据结构定义（SSOT 模式核心基石）。
  * * @details
@@ -76,6 +76,19 @@ struct ConfigChangedEvent : public z3y::Event {
   std::string
       operator_role;     /**< 发起修改的操作人角色 (如 "Admin", "Operator") */
   uint64_t timestamp_ms; /**< 修改发生时的毫秒级系统时间戳 */
+};
+
+/**
+ * @brief 配置UI界面即将打开事件
+ * @details
+ * UI 插件在创建配置窗口前会广播此全局事件。
+ * 后端业务插件（如地磅、网络、串口模块）可以订阅此事件，
+ * 并在收到事件时调用 UpdateEnumSchema 等方法，
+ * 动态刷新下拉列表等经常变动的可选项，从而实现无刷新的动态绑定。
+ */
+struct ConfigUIAboutToOpenEvent : public z3y::Event {
+  Z3Y_DEFINE_EVENT(ConfigUIAboutToOpenEvent, "z3y-evt-ConfigUIAboutToOpenEvent-001");
+  uint64_t timestamp_ms; /**< 触发时间戳 */
 };
 
 /**

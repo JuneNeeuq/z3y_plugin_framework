@@ -1,4 +1,4 @@
-// Formatting library for C++ - range and tuple support
+﻿// Formatting library for C++ - range and tuple support
 //
 // Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
 // All rights reserved.

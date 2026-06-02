@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file config_main_window.cpp
  * @brief Qt 配置系统主界面的底层实现代码。
  *

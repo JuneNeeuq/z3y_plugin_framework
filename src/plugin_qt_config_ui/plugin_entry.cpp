@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file plugin_entry.cpp
  * @brief 插件框架入口接入点。
  *

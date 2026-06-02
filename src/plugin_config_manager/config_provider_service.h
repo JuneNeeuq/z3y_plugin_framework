@@ -82,6 +82,10 @@ class ConfigProviderService
       const std::map<std::string, ConfigValue>& changes,
       const std::string& operator_role) override;
 
+  bool UpdateEnumSchema(const std::string& path, 
+                        const std::vector<std::string>& new_values, 
+                        const std::vector<std::string>& new_display_keys) override;
+
   void RegisterSchema(const std::string& path, const SchemaMetadata& meta,
                       const ConfigValue& default_val) override;
   uint64_t InternalSubscribe(

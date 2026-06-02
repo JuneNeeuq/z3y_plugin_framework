@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file widget_factory.cpp
  * @brief 工厂类的底层实现，负责数据模型到界面控件的一对一动态生成。
  */
@@ -602,6 +602,7 @@ QWidget* WidgetFactory::CreatePage(
         }
 
         // [防护] 为这个控件戴上套套，防止滚轮乱切改变数值
+        control->setFocusPolicy(Qt::StrongFocus);
         control->installEventFilter(new ScrollGuardFilter(control));
 
         // UI视觉反馈

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <spdlog/sinks/base_sink.h>
 
 #include <map>

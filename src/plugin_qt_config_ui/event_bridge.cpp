@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file event_bridge.cpp
  * @brief 跨线程事件桥接器的实现代码。
  *

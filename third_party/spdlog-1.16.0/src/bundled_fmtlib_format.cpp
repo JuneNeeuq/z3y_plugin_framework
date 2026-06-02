@@ -1,4 +1,4 @@
-// Slightly modified version of fmt lib's format.cc source file.
+﻿// Slightly modified version of fmt lib's format.cc source file.
 // Copyright (c) 2012 - 2016, Victor Zverovich
 // All rights reserved.
 
