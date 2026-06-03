@@ -99,7 +99,7 @@ void ConfigMainWindow::SetCustomPanels(
 }
 
 void ConfigMainWindow::SetupUI() {
-  this->setWindowTitle("Z3Y System Configuration");
+  this->setWindowTitle(tr("System Configuration"));
   this->resize(1200, 800);
   this->setStatusBar(new QStatusBar(this));
 
@@ -109,26 +109,26 @@ void ConfigMainWindow::SetupUI() {
 
   // === 顶部工具栏设计 ===
   QHBoxLayout* toolbar_layout = new QHBoxLayout();
-  cb_advanced_ = new QCheckBox("显示高级选项");
+  cb_advanced_ = new QCheckBox(tr("Show Advanced Options"));
   cb_advanced_->setChecked(false);
   connect(cb_advanced_, &QCheckBox::toggled, this,
           &ConfigMainWindow::OnAdvancedModeToggled);
   toolbar_layout->addWidget(cb_advanced_);
   toolbar_layout->addStretch();
 
-  QPushButton* btn_import = new QPushButton("导入配方");
+  QPushButton* btn_import = new QPushButton(tr("Import Profile"));
   btn_import->setStyleSheet("padding: 4px 15px;");
   connect(btn_import, &QPushButton::clicked, this,
           &ConfigMainWindow::OnImportClicked);
   toolbar_layout->addWidget(btn_import);
 
-  QPushButton* btn_export = new QPushButton("导出配方");
+  QPushButton* btn_export = new QPushButton(tr("Export Profile"));
   btn_export->setStyleSheet("padding: 4px 15px;");
   connect(btn_export, &QPushButton::clicked, this,
           &ConfigMainWindow::OnExportClicked);
   toolbar_layout->addWidget(btn_export);
 
-  QPushButton* btn_apply = new QPushButton("Apply (提交全部更改)");
+  QPushButton* btn_apply = new QPushButton(tr("Apply Changes"));
   btn_apply->setStyleSheet(
       "background-color: #0078D7; color: white; font-weight: bold; padding: "
       "4px 15px; margin-left: 10px;");
@@ -147,7 +147,7 @@ void ConfigMainWindow::SetupUI() {
   left_layout->setContentsMargins(0, 0, 0, 0);
 
   search_box_ = new QLineEdit();
-  search_box_->setPlaceholderText("Search items...");
+  search_box_->setPlaceholderText(tr("Search items..."));
   connect(search_box_, &QLineEdit::textChanged, this,
           &ConfigMainWindow::OnGlobalSearchTextChanged);
   left_layout->addWidget(search_box_);
@@ -172,6 +172,7 @@ void ConfigMainWindow::LoadNavigationTree() {
 
   auto all_configs = config_srv->GetAllConfigs();
   std::map<QString, QTreeWidgetItem*> group_nodes;
+  std::map<QString, QTreeWidgetItem*> subgroup_nodes;
 
   for (const auto& [path, snap] : all_configs) {
     if (snap.meta.is_hidden) continue;
@@ -187,13 +188,75 @@ void ConfigMainWindow::LoadNavigationTree() {
       group_nodes[g_key] = grp_item;
     }
 
+    // 子分组节点构建
+    QString subg_key = snap.meta.subgroup_key.empty() ? tr("General Attributes") : QString::fromStdString(snap.meta.subgroup_key);
+    QString full_subg_key = g_key + "::" + subg_key;
+    if (!subgroup_nodes.count(full_subg_key)) {
+      QTreeWidgetItem* subgrp_item =
+          new QTreeWidgetItem(group_nodes[g_key], QStringList() << subg_key);
+      subgrp_item->setData(0, Qt::UserRole, g_key); // 点击 SubGroup 还是切换到对应的 Group 页面
+      subgrp_item->setData(0, Qt::UserRole + 1, "SUBGROUP");
+      subgroup_nodes[full_subg_key] = subgrp_item;
+    }
+
     // 参数节点构建 (挂在组下面，如 "IP Address")
     QString name = QString::fromStdString(snap.meta.name_key);
     QTreeWidgetItem* item_node =
-        new QTreeWidgetItem(group_nodes[g_key], QStringList() << name);
+        new QTreeWidgetItem(subgroup_nodes[full_subg_key], QStringList() << name);
     item_node->setData(0, Qt::UserRole, QString::fromStdString(path));
     item_node->setData(0, Qt::UserRole + 1, "ITEM");
     item_node->setData(0, Qt::UserRole + 2, g_key);
+    item_node->setData(0, Qt::UserRole + 3, snap.meta.is_advanced); // 存入高级标记
+  }
+  
+  RefreshTreeVisibility(is_advanced_mode_);
+}
+
+void ConfigMainWindow::RefreshTreeVisibility(bool is_advanced_mode) {
+  // 1. 先根据高级模式控制所有 ITEM 的显示/隐藏
+  QTreeWidgetItemIterator it_item(nav_tree_);
+  while (*it_item) {
+    if ((*it_item)->data(0, Qt::UserRole + 1).toString() == "ITEM") {
+      bool is_advanced = (*it_item)->data(0, Qt::UserRole + 3).toBool();
+      if (is_advanced && !is_advanced_mode) {
+        (*it_item)->setHidden(true);
+      } else {
+        (*it_item)->setHidden(false);
+      }
+    }
+    ++it_item;
+  }
+
+  // 2. 检查并更新所有 SUBGROUP (如果全隐藏，自身也隐藏)
+  QTreeWidgetItemIterator it_subg(nav_tree_);
+  while (*it_subg) {
+    if ((*it_subg)->data(0, Qt::UserRole + 1).toString() == "SUBGROUP") {
+      bool has_visible_child = false;
+      for (int i = 0; i < (*it_subg)->childCount(); ++i) {
+        if (!(*it_subg)->child(i)->isHidden()) {
+          has_visible_child = true;
+          break;
+        }
+      }
+      (*it_subg)->setHidden(!has_visible_child);
+    }
+    ++it_subg;
+  }
+
+  // 3. 检查并更新所有 GROUP (如果全隐藏，自身也隐藏)
+  QTreeWidgetItemIterator it_g(nav_tree_);
+  while (*it_g) {
+    if ((*it_g)->data(0, Qt::UserRole + 1).toString() == "GROUP") {
+      bool has_visible_child = false;
+      for (int i = 0; i < (*it_g)->childCount(); ++i) {
+        if (!(*it_g)->child(i)->isHidden()) {
+          has_visible_child = true;
+          break;
+        }
+      }
+      (*it_g)->setHidden(!has_visible_child);
+    }
+    ++it_g;
   }
 }
 
@@ -206,6 +269,8 @@ void ConfigMainWindow::OnTreeSelectionChanged(QTreeWidgetItem* current,
   QString target_path;
 
   if (type == "GROUP") {
+    group_key = current->data(0, Qt::UserRole).toString();
+  } else if (type == "SUBGROUP") {
     group_key = current->data(0, Qt::UserRole).toString();
   } else if (type == "ITEM") {
     target_path = current->data(0, Qt::UserRole).toString();
@@ -352,7 +417,7 @@ void ConfigMainWindow::OnBatchedConfigChanged(
       if (pending_changes_.count(safe_path)) {
         widget->setStyleSheet("border: 2px solid orange;");
         widget->setToolTip(
-            "⚠️ 警告：系统后台强行更改了该数据！请提交覆盖或重置此页。");
+            tr("⚠️ Warning: Data changed by background system! Apply to overwrite or reload this page."));
         if (dependency_graph_) dependency_graph_->OnParameterChanged(safe_path);
         continue;
       }
@@ -499,9 +564,9 @@ void ConfigMainWindow::OnBatchedConfigChanged(
 
 void ConfigMainWindow::OnGlobalSearchTextChanged(const QString& text) {
   if (text.trimmed().isEmpty()) {
+    RefreshTreeVisibility(is_advanced_mode_);
     QTreeWidgetItemIterator it_reset(nav_tree_);
     while (*it_reset) {
-      (*it_reset)->setHidden(false);
       (*it_reset)->setExpanded(false);
       ++it_reset;
     }
@@ -517,6 +582,12 @@ void ConfigMainWindow::OnGlobalSearchTextChanged(const QString& text) {
 
   QTreeWidgetItemIterator it_match(nav_tree_);
   while (*it_match) {
+    // 过滤掉不应该显示的高级节点
+    if (!is_advanced_mode_ && (*it_match)->data(0, Qt::UserRole + 1).toString() == "ITEM" && (*it_match)->data(0, Qt::UserRole + 3).toBool()) {
+      ++it_match;
+      continue;
+    }
+
     QString display_name = (*it_match)->text(0);
     QString raw_key = (*it_match)->data(0, Qt::UserRole).toString();
 
@@ -537,6 +608,11 @@ void ConfigMainWindow::OnGlobalSearchTextChanged(const QString& text) {
       }
       while (!children_queue.isEmpty()) {
         QTreeWidgetItem* child = children_queue.takeFirst();
+        
+        // 过滤高级选项
+        bool is_advanced_item = child->data(0, Qt::UserRole + 1).toString() == "ITEM" && child->data(0, Qt::UserRole + 3).toBool();
+        if (is_advanced_item && !is_advanced_mode_) continue;
+
         child->setHidden(false);
         for (int i = 0; i < child->childCount(); ++i) {
           children_queue.append(child->child(i));
@@ -545,10 +621,49 @@ void ConfigMainWindow::OnGlobalSearchTextChanged(const QString& text) {
     }
     ++it_match;
   }
+
+  // 搜索后清理空节点：如果命中节点，但其下子节点全因高级过滤而不可见，则隐藏该组
+  QTreeWidgetItemIterator clean_subg(nav_tree_);
+  while (*clean_subg) {
+    if (!(*clean_subg)->isHidden() && (*clean_subg)->data(0, Qt::UserRole + 1).toString() == "SUBGROUP") {
+      bool has_visible_child = false;
+      for (int i = 0; i < (*clean_subg)->childCount(); ++i) {
+        if (!(*clean_subg)->child(i)->isHidden()) {
+          has_visible_child = true;
+          break;
+        }
+      }
+      if (!has_visible_child) (*clean_subg)->setHidden(true);
+    }
+    ++clean_subg;
+  }
+
+  QTreeWidgetItemIterator clean_g(nav_tree_);
+  while (*clean_g) {
+    if (!(*clean_g)->isHidden() && (*clean_g)->data(0, Qt::UserRole + 1).toString() == "GROUP") {
+      bool has_visible_child = false;
+      for (int i = 0; i < (*clean_g)->childCount(); ++i) {
+        if (!(*clean_g)->child(i)->isHidden()) {
+          has_visible_child = true;
+          break;
+        }
+      }
+      if (!has_visible_child) (*clean_g)->setHidden(true);
+    }
+    ++clean_g;
+  }
 }
 
 void ConfigMainWindow::OnAdvancedModeToggled(bool checked) {
   is_advanced_mode_ = checked;
+  
+  if (search_box_->text().trimmed().isEmpty()) {
+    RefreshTreeVisibility(is_advanced_mode_);
+  } else {
+    // 重新应用带有新过滤规则的搜索
+    OnGlobalSearchTextChanged(search_box_->text());
+  }
+  
   QList<QFormLayout*> all_forms = stacked_pages_->findChildren<QFormLayout*>();
 
   for (auto& [path, widget_ptr] : global_widget_map_) {
@@ -576,7 +691,7 @@ void ConfigMainWindow::OnImportClicked() {
   if (!PromptUnsavedChanges()) return;
 
   QString file_path = QFileDialog::getOpenFileName(
-      this, "导入配置配方", "", "JSON Files (*.json);;All Files (*.*)");
+      this, tr("Import Configuration Profile"), "", tr("JSON Files (*.json);;All Files (*.*)"));
   if (file_path.isEmpty()) return;
 
   auto config_srv =
@@ -585,18 +700,18 @@ void ConfigMainWindow::OnImportClicked() {
 
   // 通知底层读取硬盘文件并直接套用到内存中
   if (config_srv->ImportFromFile(file_path.toStdString(), true)) {
-    QMessageBox::information(this, "导入成功",
-                             "配置配方导入成功！系统已自动应用新参数。");
+    QMessageBox::information(this, tr("Import Success"),
+                             tr("Configuration profile imported successfully! New parameters applied."));
   } else {
-    QMessageBox::critical(this, "导入失败",
-                          "配置导入失败！请检查文件格式或系统读取权限。");
+    QMessageBox::critical(this, tr("Import Failed"),
+                          tr("Failed to import configuration! Check file format or read permissions."));
   }
 }
 
 void ConfigMainWindow::OnExportClicked() {
   QString file_path =
-      QFileDialog::getSaveFileName(this, "导出配置配方", "config_backup.json",
-                                   "JSON Files (*.json);;All Files (*.*)");
+      QFileDialog::getSaveFileName(this, tr("Export Configuration Profile"), "config_backup.json",
+                                   tr("JSON Files (*.json);;All Files (*.*)"));
   if (file_path.isEmpty()) return;
 
   auto config_srv =
@@ -604,10 +719,10 @@ void ConfigMainWindow::OnExportClicked() {
   if (!config_srv) return;
 
   if (config_srv->ExportToFile(file_path.toStdString())) {
-    QMessageBox::information(this, "导出成功", "当前所有配置已成功导出落地。");
+    QMessageBox::information(this, tr("Export Success"), tr("All configurations successfully exported."));
   } else {
-    QMessageBox::critical(this, "导出失败",
-                          "导出文件失败，请检查指定路径及系统写入权限！");
+    QMessageBox::critical(this, tr("Export Failed"),
+                          tr("Failed to export file. Check path and write permissions!"));
   }
 }
 
@@ -649,15 +764,19 @@ void ConfigMainWindow::DiscardAllPendingChanges() {
 bool ConfigMainWindow::PromptUnsavedChanges() {
   if (pending_changes_.empty()) return true;
 
-  auto result = QMessageBox::warning(
-      this, "未保存的更改",
-      "当前页面包含尚未提交的数据，强行离开将会导致修改丢失。是否应用并保存？",
-      QMessageBox::Apply | QMessageBox::Discard | QMessageBox::Cancel);
+  QMessageBox msgBox(this);
+  msgBox.setWindowTitle(tr("Unsaved Changes"));
+  msgBox.setText(tr("Current page contains unsaved changes. Leaving will cause data loss. Apply and save?"));
+  msgBox.setIcon(QMessageBox::Warning);
+  QPushButton* btnApply = msgBox.addButton(tr("Apply"), QMessageBox::AcceptRole);
+  QPushButton* btnDiscard = msgBox.addButton(tr("Discard"), QMessageBox::DestructiveRole);
+  QPushButton* btnCancel = msgBox.addButton(tr("Cancel"), QMessageBox::RejectRole);
+  
+  msgBox.exec();
 
-  if (result == QMessageBox::Apply) {
+  if (msgBox.clickedButton() == btnApply) {
     return ApplyChanges();
-  }
-  if (result == QMessageBox::Discard) {
+  } else if (msgBox.clickedButton() == btnDiscard) {
     DiscardAllPendingChanges();
     return true;
   }
@@ -670,7 +789,7 @@ bool ConfigMainWindow::ApplyChanges() {
   auto config_srv =
       z3y::GetDefaultService<z3y::interfaces::core::IConfigService>();
   if (!config_srv) {
-    QMessageBox::critical(this, "系统错误", "致命：核心配置服务意外丢失！");
+    QMessageBox::critical(this, tr("System Error"), tr("Fatal: Core configuration service missing!"));
     return false;
   }
 
@@ -715,8 +834,8 @@ bool ConfigMainWindow::ApplyChanges() {
         backend_val = config_srv->GetValue(path);
       } catch (const std::exception& e) {
         QMessageBox::critical(
-            this, "验证崩溃",
-            QString("数组路径丢失：%1\n报错信息：%2")
+            this, tr("Validation Crash"),
+            QString(tr("Array path missing: %1\nError: %2"))
                 .arg(QString::fromUtf8(path.c_str()), e.what()));
         return false;
       } catch (...) {
@@ -768,8 +887,8 @@ bool ConfigMainWindow::ApplyChanges() {
           qlonglong d = v.toLongLong(&ok);
           if (!ok) {
             QMessageBox::critical(
-                this, "类型严查",
-                QString("在数组中检测到非法整数: '%1'\n参数路径: %2")
+                this, tr("Type Validation"),
+                QString(tr("Invalid integer detected in array: '%1'\nParameter path: %2"))
                     .arg(v.toString(), QString::fromUtf8(path.c_str())));
             return false;
           }
@@ -788,8 +907,8 @@ bool ConfigMainWindow::ApplyChanges() {
           double d = v.toDouble(&ok);
           if (!ok) {
             QMessageBox::critical(
-                this, "类型严查",
-                QString("在数组中检测到非法浮点: '%1'\n参数路径: %2")
+                this, tr("Type Validation"),
+                QString(tr("Invalid float detected in array: '%1'\nParameter path: %2"))
                     .arg(v.toString(), QString::fromUtf8(path.c_str())));
             return false;
           }
@@ -819,8 +938,8 @@ bool ConfigMainWindow::ApplyChanges() {
     errors = batch.Commit(current_role_);
   } catch (const std::exception& e) {
     QMessageBox::critical(
-        this, "事务致命错误",
-        QString("后台引擎拒绝提交并抛出底层异常:\n%1").arg(e.what()));
+        this, tr("Fatal Transaction Error"),
+        QString(tr("Background engine rejected commit with exception:\n%1")).arg(e.what()));
     return false;
   } catch (...) {
     return false;
@@ -828,7 +947,7 @@ bool ConfigMainWindow::ApplyChanges() {
 
   // 4. 结算：检查后台有没有退货（校验失败拦截）
   if (!errors.empty()) {
-    QString error_msg = "操作由于未通过合规校验而被全部回滚：\n\n";
+    QString error_msg = tr("Operations rolled back due to validation failure:\n\n");
     auto all_configs = config_srv->GetAllConfigs();
     static const QRegularExpression re("\\[(.*?)\\]");
 
@@ -881,14 +1000,14 @@ bool ConfigMainWindow::ApplyChanges() {
     }
 
     this->statusBar()->showMessage(
-        "提交失败：请修正左侧红叉标记页面的错误，或放弃修改。", 8000);
-    QMessageBox::critical(this, "被拦截的危险操作", error_msg);
+        tr("Commit failed: Please fix errors on pages marked with red crosses, or discard changes."), 8000);
+    QMessageBox::critical(this, tr("Blocked Dangerous Operation"), error_msg);
     return false;
   } else {
     // 【圆满成功】：交易完成，清空修改缓存，宣告界面洗白
     pending_changes_.clear();
     this->setProperty("backend_errors", QStringList());
-    this->statusBar()->showMessage("所有事务均已成功提交并通过持久化落盘。",
+    this->statusBar()->showMessage(tr("All transactions committed and persisted successfully."),
                                    3000);
 
     for (const auto& [cached_group_key, _] : page_cache_) {
@@ -938,3 +1057,6 @@ void ConfigMainWindow::closeEvent(QCloseEvent* event) {
 }  // namespace qt_ui
 }  // namespace plugins
 }  // namespace z3y
+
+
+

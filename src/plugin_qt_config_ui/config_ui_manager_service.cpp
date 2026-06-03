@@ -11,6 +11,7 @@
 #include "config_ui_manager_service.h"
 
 #include <QMetaType>
+#include <QApplication>
 
 #include "config_main_window.h"
 #include "event_bridge.h"
@@ -29,6 +30,22 @@ void ConfigUIManagerService::Initialize() {
   // 因为跨线程使用 Qt 的 QueuedConnection 发送自定义类型时，Qt 必须能序列化该类型。
   qRegisterMetaType<z3y::plugins::qt_ui::ConfigUpdateMap>(
       "z3y::plugins::qt_ui::ConfigUpdateMap");
+
+  // 初始化翻译系统
+  if (qApp) {
+    translator_ = std::make_unique<QTranslator>();
+    
+    // 方案B落地：混合兜底策略
+    // 1. 先尝试加载外部的翻译文件 (支持热更新、免编译添加多国语言)
+    QString target_lang = QLocale().name();
+    if (translator_->load("z3y_config_ui_" + target_lang + ".qm", qApp->applicationDirPath() + "/translations")) {
+      qApp->installTranslator(translator_.get());
+    } 
+    // 2. 如果外部没有，则启用编译在 DLL 里的中文作为保底
+    else if (target_lang.startsWith("zh") && translator_->load(":/z3y_i18n/z3y_config_ui_zh_CN.qm")) {
+      qApp->installTranslator(translator_.get());
+    }
+  }
 }
 
 void ConfigUIManagerService::Shutdown() {
@@ -83,3 +100,6 @@ void ConfigUIManagerService::RegisterCustomPanel(const std::string& key,
 }  // namespace qt_ui
 }  // namespace plugins
 }  // namespace z3y
+
+
+

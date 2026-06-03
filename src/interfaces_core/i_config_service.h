@@ -163,6 +163,11 @@ class ConfigBuilder {
     return *this;
   }
 
+  ConfigBuilder& TooltipKey(const std::string& key) {
+    meta_.tooltip_key = key;
+    return *this;
+  }
+
   template <typename U>
   ConfigBuilder& Min(U val) {
     if constexpr (std::is_floating_point_v<T> ||
@@ -665,3 +670,4 @@ inline std::vector<std::string> BatchUpdater::Commit(const std::string& role) {
 }  // namespace z3y
 
 #endif  // Z3Y_I_CONFIG_SERVICE_H_
+

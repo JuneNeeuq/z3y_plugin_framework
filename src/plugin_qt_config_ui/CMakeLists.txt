@@ -17,6 +17,7 @@ set(PLUGIN_SRCS
     dependency_graph.cpp
     widget_factory.cpp
     scroll_guard.h
+    z3y_config_ui.qrc
 )
 
 add_library(plugin_qt_config_ui SHARED ${PLUGIN_SRCS})

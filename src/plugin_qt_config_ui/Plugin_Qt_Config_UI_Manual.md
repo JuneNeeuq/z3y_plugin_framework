@@ -225,3 +225,96 @@ void SetupSystemSettings() {
 4. **安全滚轮过滤器 (Scroll Guard)**：
    你在滚动查看几百个参数时，鼠标经常会不小心划过 `QSpinBox` 数字旋转盒。默认的 Qt 行为是滚轮会改变它的数值，导致你无意中破坏了系统参数而不自知。
    模块内的 `ScrollGuardFilter` 强行拦截了这一机制。只有当你明确点击选中（Focus）了某个数字框时，滚轮调节才会生效。其他情况下，所有的滚动都被抛给最外层的大滚动条。
+
+
+## 4. 国际化 (i18n) 与多语言切换机制
+
+为了满足企业级软件和跨国部署的需求，`plugin_qt_config_ui` 深度集成了 Qt 的国际化架构，采用 **“内部保底 + 外部扩展” (Internal Fallback + External Extension)** 的高级混合模式。
+
+### 4.1 设计理念
+- **彻底去硬编码**：底层 C++ 源码中所有面向用户的字符串（如弹窗警告、按钮名称）均采用严谨的纯英文编写，并全部被 `tr()` 宏包裹。
+- **去耦合化**：人机界面上剥离了所有 “z3y” 框架相关的字眼。业务系统的客户永远只会看到“系统配置中心”，而不会察觉到第三方框架的存在。
+- **内部兜底 (Fallback)**：框架的 `.dll` / `.so` 二进制文件中，已经通过 `.qrc` 资源文件死死内嵌了一份完美的简体中文翻译包 (`:/z3y_i18n/z3y_config_ui_zh_CN.qm`)。即使脱离了任何外部配置文件，框架也能保证在中文系统下呈现出地道的母语界面，绝不退化为英文乱码。
+- **外部免编译扩展 (Zero-Compilation Extension)**：当框架发现操作系统为其他语言（例如俄语 `ru_RU`），或者业务系统主动索要其他语言时，它会优先去主程序的运行目录（`translations/`）下寻找对应的 `.qm` 文件。这意味着**为系统新增任何一种小语种，都不需要拿到框架源码，也不需要重新编译 C++！**
+
+### 4.2 框架的自动加载逻辑
+当您的业务系统调用 `ConfigUIManagerService::Initialize()` 启动配置 UI 插件时，底层的加载顺位如下：
+1. 检测当前操作系统的语言标识（如 `ru_RU`, `ja_JP`, `zh_CN`）。
+2. **【外部优先】** 尝试在可执行文件同级的 `translations/` 目录下，寻找名为 `z3y_config_ui_[语言标识].qm` 的文件。如果找到，立即加载！
+3. **【内部保底】** 如果外部没找到，框架尝试在其 DLL 肚子里的虚拟路径 `:/z3y_i18n/z3y_config_ui_zh_CN.qm` 进行加载。
+4. **【源码退化】** 如果前两者全部失败（比如运行在一个纯英语版本的 Windows 服务器上），框架将退化为纯正的英文极客风界面。
+
+### 4.3 开发者教程：如何为框架增加一种新语言（以俄语为例）
+
+假设您的系统要出口到俄罗斯，您需要为本框架的配置界面翻译俄文。**您完全不需要配置 C++ 编译环境。**
+
+**步骤 1：生成源文件**
+请进入 `z3y_plugin_framework/src/plugin_qt_config_ui` 目录，这里有一份我已经为您准备好的 `z3y_config_ui_zh_CN.ts` 源文件。
+把它复制一份，改名为 `z3y_config_ui_ru_RU.ts`。
+
+**步骤 2：使用 Qt Linguist 进行翻译**
+打开 Qt 官方提供的翻译软件 **Qt Linguist（Qt 语言家）**（任何非程序员的翻译人员都可以轻松使用）。
+将 `z3y_config_ui_ru_RU.ts` 拖入其中。
+软件左侧会列出框架里所有用到的英文原文（例如 `System Configuration`, `Apply Changes`, `Export Profile` 等）。
+请您在下方对应的俄语翻译框中，填入翻译结果，并点击顶部的“✅（完成）”按钮。
+
+**步骤 3：发布二进制 `.qm` 字典**
+翻译完成后，在 Qt Linguist 的菜单栏点击 `文件(File) -> 发布(Release)`。
+软件会在同目录下瞬间生成一个极小巧的二进制文件：`z3y_config_ui_ru_RU.qm`。
+
+**步骤 4：部署**
+将这个 `z3y_config_ui_ru_RU.qm` 拷贝到您最终要交付给客户的软件安装包中。
+必须放置的目录层级如下：
+```text
+你的记账软件安装目录/
+├── 你的主程序.exe
+├── plugins/
+│   └── plugin_qt_config_ui_x64.dll   (底层框架dll，不需要重新编译！)
+└── translations/
+    └── z3y_config_ui_ru_RU.qm        <--- 放在这里！
+```
+大功告成！当俄罗斯客户在当地的 Windows 系统双击运行您的主程序并调出配置界面时，整个配置 UI 将瞬间化身为完美的俄语版。
+
+
+### 4.4 进阶：如何让软件支持自由切换语言（强制覆盖系统语言）
+
+在真实业务中，软件通常会提供一个“语言切换”的下拉框。如果用户的操作系统是中文，但他想强制使用英文（或者相反），我们应该如何告诉底层的 plugin_qt_config_ui 插件？
+
+**原理**：插件在初始化时，读取的其实是 Qt 的全局默认区域设置（QLocale()）。我们只需要在主程序（Host App）启动插件**之前**，强制重写这个全局设置即可。
+
+**示例代码（宿主程序的 main.cpp）：**
+`cpp
+#include <QApplication>
+#include <QLocale>
+
+int main(int argc, char *argv[]) {
+    // 1. 从您自己的业务配置中读取用户的语言偏好
+    // 假设用户在设置里选择了 "English"
+    QString user_lang_preference = "en_US"; // 也可以是 "ru_RU", "zh_CN" 等
+    
+    // 2. 【核心动作】在创建任何 Qt 窗口前，强制覆盖全局默认语言
+    QLocale::setDefault(QLocale(user_lang_preference));
+
+    QApplication app(argc, argv);
+    
+    // 3. 接下来正常初始化 z3y 框架和加载 UI 插件
+    // plugin_qt_config_ui 插件在 Initialize() 时会探测到 "en_US"
+    // 它会跳过中文兜底包，直接为您呈现完美的纯英文界面！
+    // ...
+    
+    return app.exec();
+}
+`
+
+**加载判定逻辑的底层细节：**
+为了支持这种强制脱离系统环境的“自由切换”，底层加载代码不仅判断语言，还具有**退化智能**：
+`cpp
+QString target_lang = QLocale().name(); // 如 "en_US"
+
+// 1. 尝试外部加载 (去 translations/ 目录下找 z3y_config_ui_en_US.qm)
+if (translator_->load("z3y_config_ui_" + target_lang + ".qm", qApp->applicationDirPath() + "/translations")) { ... }
+// 2. 如果外部没有，并且用户请求的是中文，才加载内置中文包
+else if (target_lang.startsWith("zh") && translator_->load(":/z3y_i18n/z3y_config_ui_zh_CN.qm")) { ... }
+`
+由于我们在 C++ 源码中写的全都是英文 	r("System Configuration")，所以当您将 QLocale 设为 en_US 时，插件如果找不到外部的 z3y_config_ui_en_US.qm，它会因为 startsWith("zh") 条件不成立而**智能跳过中文内嵌包**，直接裸奔显示源码里的原生英文。
+**这就是为什么您甚至不需要提供英文翻译包的原因！**

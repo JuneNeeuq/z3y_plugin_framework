@@ -90,6 +90,8 @@ class ConfigMainWindow : public QMainWindow {
   void SetupUI();
   /** @brief 扫描底层的所有配置信息，将所有的一级、二级分组装配进左侧导航树。 */
   void LoadNavigationTree();
+  /** @brief 递归刷新树节点的可见性，支持高级参数的级联隐藏。 */
+  void RefreshTreeVisibility(bool is_advanced_mode);
   /** @brief LRU 缓存淘汰：如果已创建的页面过多，则销毁最早最久未使用的页面以释放内存。 */
   void EvictOldestPageIfNeeded();
   /** @brief 询问用户是否要抛弃/保存那些还未 Apply 的悬而不决的更改。 */

@@ -10,6 +10,7 @@
 
 #pragma once
 #include <QPointer>
+#include <QTranslator>
 #include <map>
 #include <memory>
 #include <string>
@@ -92,6 +93,9 @@ class ConfigUIManagerService
 
   /** @brief 当前生效的用户角色字符串。 */
   std::string current_role_;
+  
+  /** @brief 翻译器实例，保证其生命周期与框架一致。 */
+  std::unique_ptr<QTranslator> translator_;
 
   /** @brief 缓存外部业务模块注册过来的所有自定义面板工厂函数。 */
   std::map<std::string, CustomPanelCreator> custom_panels_;

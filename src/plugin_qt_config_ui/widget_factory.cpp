@@ -143,7 +143,7 @@ QWidget* WidgetFactory::CreatePage(
       grouped_snaps;
   for (const auto& [path, snap] : snapshots) {
     if (snap.meta.is_hidden) continue;
-    std::string subg = snap.meta.subgroup_key.empty() ? "General Attributes"
+    std::string subg = snap.meta.subgroup_key.empty() ? QCoreApplication::translate("z3y::plugins::qt_ui::WidgetFactory", "General Attributes").toStdString()
                                                       : snap.meta.subgroup_key;
     grouped_snaps[subg].push_back({path, snap});
   }
@@ -161,7 +161,7 @@ QWidget* WidgetFactory::CreatePage(
     // 4.1 在 GroupBox 内部的右上角注入一个 “[↺] Reset Data” 复原按钮
     QHBoxLayout* header_layout = new QHBoxLayout();
     header_layout->addStretch();
-    QPushButton* btn_reset = new QPushButton("[↺] Reset Data");
+    QPushButton* btn_reset = new QPushButton(QCoreApplication::translate("z3y::plugins::qt_ui::WidgetFactory", "[↺] Reset Data"));
     btn_reset->setToolTip(
         "一键将此框内参数刷回系统底层预设的安全值 (需要点击 Apply "
         "才会实质落地)。");
@@ -721,3 +721,5 @@ QWidget* WidgetFactory::CreatePage(
 }  // namespace qt_ui
 }  // namespace plugins
 }  // namespace z3y
+
+
