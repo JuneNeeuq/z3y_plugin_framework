@@ -35,9 +35,7 @@ void EventBridgeSubscriber::OnConfigChanged(
       
       // 【核心技术点】：强行将其投递回 Main(UI) 线程执行 ReceiveDataInMainThread。
       // 这个动作本身是非阻塞的，它会把调用任务塞进 UI 线程的事件队列中。
-      QMetaObject::invokeMethod(bridge_, "ReceiveDataInMainThread",
-                                Qt::QueuedConnection, Q_ARG(QString, qt_path),
-                                Q_ARG(QVariant, qt_val));
+      QMetaObject::invokeMethod(bridge_, [bridge = bridge_, qt_path, qt_val]() { bridge->ReceiveDataInMainThread(qt_path, qt_val); }, Qt::QueuedConnection);
     } catch (...) {
       // 忽略因路径被瞬间移除导致无法获取值的情况
     }
@@ -99,3 +97,5 @@ void EventBridge::FlushDirtyData() {
 }  // namespace qt_ui
 }  // namespace plugins
 }  // namespace z3y
+
+

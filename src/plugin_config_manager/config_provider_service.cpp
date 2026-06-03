@@ -166,7 +166,9 @@ void ConfigProviderService::RegisterSchema(const std::string& path,
         target_entry = it->second;
         is_phantom_upgrade = true;  // 确认正在给假节点转正
       } else {
-        return;  // 真的是被别的业务注册过了，直接忽略退出
+        // 真的是被别的业务注册过了，抛出异常，防止多个组件竞态注册同一配置项
+        throw std::logic_error(
+            "Duplicated configuration registration for path: " + path);
       }
     } else {
       // 全新节点，直接插入拓扑树
@@ -1085,3 +1087,4 @@ std::map<std::string, ConfigSnapshot> ConfigProviderService::GetConfigsByGroup(
 }  // namespace config
 }  // namespace plugins
 }  // namespace z3y
+
