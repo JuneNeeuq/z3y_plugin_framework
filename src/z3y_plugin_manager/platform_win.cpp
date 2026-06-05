@@ -189,13 +189,23 @@ namespace z3y {
      */
     PluginManager::LibHandle PluginManager::PlatformLoadLibrary(
         const std::filesystem::path& path) {
+        const std::filesystem::path absolute_path = path.is_absolute()
+            ? path
+            : std::filesystem::absolute(path);
+
         // [设计]
-        // 使用 LoadLibraryExW 配合 LOAD_WITH_ALTERED_SEARCH_PATH 标志。
-        // 这指示 Windows 在解析 DLL 的依赖项时，
-        // 将被加载 DLL 所在的目录作为主要搜索目录之一。
-        // 极大地增强了在不同工作目录（如 IDE 调试）下的加载鲁棒性。
-        // `path.c_str()` (C++17) 自动提供了 `const wchar_t*`。
-        return ::LoadLibraryExW(path.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+        // Windows 解析 DLL 依赖时，不能依赖“当前工作目录”。
+        // 绿色软件的真实运行边界是：
+        // - 主程序目录：Qt、框架运行库、公共运行时 DLL；
+        // - 插件目录：当前被加载插件以及它旁边的私有依赖。
+        // 这里显式使用 DLL_LOAD_DIR + APPLICATION_DIR，保证从项目根目录、bin 目录、IDE 调试启动时行为一致。
+        return ::LoadLibraryExW(
+            absolute_path.c_str(),
+            NULL,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+                LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                LOAD_LIBRARY_SEARCH_SYSTEM32 |
+                LOAD_LIBRARY_SEARCH_USER_DIRS);
     }
 
     /**
