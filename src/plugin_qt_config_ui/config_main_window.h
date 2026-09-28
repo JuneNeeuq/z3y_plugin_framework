@@ -58,6 +58,15 @@ class ConfigMainWindow : public QMainWindow {
                      z3y::interfaces::ui::IConfigUIManager::CustomPanelCreator>&
           panels);
 
+  /**
+   * @brief 每次显示前调用：跟随父窗口当前所在屏幕摆放窗口，并按该屏可用区自适应尺寸。
+   * @details 窗口是懒加载且长期复用的，若只在首次 show 时由 Qt 自动居中，宿主窗口
+   *   换到另一块屏后再打开配置窗口，它会留在旧屏上、甚至因跨屏/高DPI缩放只露出一半。
+   *   尺寸按目标屏可用区占比推算，避免固定 1200x800 在小屏近乎全屏、大屏偏小。
+   *   同一块屏且完整可见时保留用户自己调整过的尺寸/位置。
+   */
+  void EnsureOnParentScreen();
+
  public slots:
   /** @brief 强制重新向后台索要最新数据来刷新指定的配置页面。 */
   void RefreshPageValues(const QString& group_key);

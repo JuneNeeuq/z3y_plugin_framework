@@ -79,6 +79,9 @@ void ConfigUIManagerService::ShowConfigWindow(void* parent) {
 
   // 常规的 Qt 窗口显示三连击：显示、置顶、激活焦点
   main_window_->showNormal();
+  // 关键：窗口是懒加载复用的，先恢复常态，再按“父窗口当前所在屏”重新摆位，
+  // 否则宿主窗口换屏后配置窗口会留在旧屏（跨屏/高DPI时甚至只露出一半）。
+  main_window_->EnsureOnParentScreen();
   main_window_->raise();
   main_window_->activateWindow();
 }

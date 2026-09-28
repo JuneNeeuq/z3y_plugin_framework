@@ -11,7 +11,10 @@
 #include "config_main_window.h"
 
 #include <QApplication>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QStyle>
+#include <QWindow>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -96,6 +99,46 @@ void ConfigMainWindow::SetCustomPanels(
                    z3y::interfaces::ui::IConfigUIManager::CustomPanelCreator>&
         panels) {
   custom_panels_ = panels;
+}
+
+void ConfigMainWindow::EnsureOnParentScreen() {
+  // 目标屏：优先“父窗口(壳主窗口)当前所在屏”，其次本窗口当前屏，最后主屏。
+  QScreen* target = nullptr;
+  if (QWidget* par = parentWidget()) {
+    QWidget* top = par->window();
+    if (top && top->windowHandle()) target = top->windowHandle()->screen();
+    if (!target && top) target = top->screen();
+  }
+  if (!target && windowHandle()) target = windowHandle()->screen();
+  if (!target) target = QGuiApplication::primaryScreen();
+  if (!target) return;
+
+  const QRect avail = target->availableGeometry();
+
+  // 同一块屏且完整可见：保留用户自己调整过的尺寸/位置，不打扰。
+  if (windowHandle() && windowHandle()->screen() == target &&
+      avail.contains(frameGeometry())) {
+    return;
+  }
+
+  // 自适应尺寸：按目标屏可用区占比推算并限幅。两块屏分辨率/缩放不同，
+  // 固定的 1200x800 会让小屏近乎全屏、大屏偏小；改用占比后观感一致。
+  constexpr double kWidthRatio = 0.70;
+  constexpr double kHeightRatio = 0.80;
+  constexpr int kMinW = 900, kMaxW = 1600;
+  constexpr int kMinH = 600, kMaxH = 1000;
+  int w = std::clamp(static_cast<int>(avail.width() * kWidthRatio), kMinW, kMaxW);
+  int h = std::clamp(static_cast<int>(avail.height() * kHeightRatio), kMinH, kMaxH);
+  w = std::min(w, avail.width());
+  h = std::min(h, avail.height());
+  resize(w, h);
+
+  // 按新尺寸在目标屏可用区域内居中，并钳位保证标题栏可见。
+  int x = avail.x() + (avail.width() - w) / 2;
+  int y = avail.y() + (avail.height() - h) / 2;
+  x = std::max(avail.x(), std::min(x, avail.x() + avail.width() - w));
+  y = std::max(avail.y(), std::min(y, avail.y() + avail.height() - h));
+  move(x, y);
 }
 
 void ConfigMainWindow::SetupUI() {
