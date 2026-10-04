@@ -172,9 +172,9 @@ void ConfigMainWindow::SetupUI() {
   toolbar_layout->addWidget(btn_export);
 
   QPushButton* btn_apply = new QPushButton(tr("Apply Changes"));
-  btn_apply->setStyleSheet(
-      "background-color: #0078D7; color: white; font-weight: bold; padding: "
-      "4px 15px; margin-left: 10px;");
+  // 只给结构 + 语义 objectName，颜色交给宿主主题（避免把品牌色硬编码进可复用库）
+  btn_apply->setObjectName(QStringLiteral("z3y_config_apply"));
+  btn_apply->setStyleSheet("font-weight: bold; padding: 4px 15px; margin-left: 10px;");
   connect(btn_apply, &QPushButton::clicked, this,
           &ConfigMainWindow::ApplyChanges);
   toolbar_layout->addWidget(btn_apply);
