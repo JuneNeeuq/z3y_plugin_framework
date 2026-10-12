@@ -19,6 +19,7 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFile>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -160,21 +161,20 @@ void ConfigMainWindow::SetupUI() {
   toolbar_layout->addStretch();
 
   QPushButton* btn_import = new QPushButton(tr("Import Profile"));
-  btn_import->setStyleSheet("padding: 4px 15px;");
+  sem::SetRole(btn_import, "secondary");
   connect(btn_import, &QPushButton::clicked, this,
           &ConfigMainWindow::OnImportClicked);
   toolbar_layout->addWidget(btn_import);
 
   QPushButton* btn_export = new QPushButton(tr("Export Profile"));
-  btn_export->setStyleSheet("padding: 4px 15px;");
+  sem::SetRole(btn_export, "secondary");
   connect(btn_export, &QPushButton::clicked, this,
           &ConfigMainWindow::OnExportClicked);
   toolbar_layout->addWidget(btn_export);
 
   QPushButton* btn_apply = new QPushButton(tr("Apply Changes"));
-  // 只给结构 + 语义 objectName，颜色交给宿主主题（避免把品牌色硬编码进可复用库）
-  btn_apply->setObjectName(QStringLiteral("z3y_config_apply"));
-  btn_apply->setStyleSheet("font-weight: bold; padding: 4px 15px; margin-left: 10px;");
+  // 只给结构 + 语义角色，外观交给"库自带皮肤"或"宿主风格"（库里不写死颜色/尺寸）
+  sem::SetRole(btn_apply, "primary");
   connect(btn_apply, &QPushButton::clicked, this,
           &ConfigMainWindow::ApplyChanges);
   toolbar_layout->addWidget(btn_apply);
@@ -205,6 +205,35 @@ void ConfigMainWindow::SetupUI() {
   stacked_pages_ = new QStackedWidget();
   splitter->addWidget(stacked_pages_);
   splitter->setSizes({300, 900}); // 默认侧边栏宽度 300
+
+  // 默认套用"库自带皮肤"（开箱即用）；宿主可用 SetSkin(None/Custom) 覆盖。
+  SetSkin(z3y::interfaces::ui::IConfigUIManager::ConfigSkin::Default);
+}
+
+void ConfigMainWindow::SetSkin(
+    z3y::interfaces::ui::IConfigUIManager::ConfigSkin mode,
+    const QString& custom_qss) {
+  namespace UI = z3y::interfaces::ui;
+  switch (mode) {
+    case UI::IConfigUIManager::ConfigSkin::Default:
+      this->setStyleSheet(LoadDefaultSkinQss());
+      break;
+    case UI::IConfigUIManager::ConfigSkin::None:
+      // 不套库皮肤：控件跟随宿主应用级样式/主题（按中立语义 role/state 渲染）
+      this->setStyleSheet(QString());
+      break;
+    case UI::IConfigUIManager::ConfigSkin::Custom:
+      this->setStyleSheet(custom_qss);
+      break;
+  }
+}
+
+QString ConfigMainWindow::LoadDefaultSkinQss() {
+  QFile f(QStringLiteral(":/z3y_config_ui/default_skin.qss"));
+  if (f.open(QIODevice::ReadOnly)) {
+    return QString::fromUtf8(f.readAll());
+  }
+  return QString();
 }
 
 void ConfigMainWindow::LoadNavigationTree() {
@@ -353,8 +382,7 @@ void ConfigMainWindow::OnTreeSelectionChanged(QTreeWidgetItem* current,
 
       if (global_widget_map_.count(path) &&
           !global_widget_map_[path].isNull()) {
-        global_widget_map_[path]->setStyleSheet(
-            "font-weight: bold; color: #b35900;"); // 改为醒目的橙色修改态
+        sem::SetState(global_widget_map_[path].data(), "modified");  // 未提交修改态
         global_widget_map_[path]->setToolTip("");
       }
       // 通知依赖图谱更新其它联动控件
@@ -379,10 +407,9 @@ void ConfigMainWindow::OnTreeSelectionChanged(QTreeWidgetItem* current,
 
         // 如果这个页面是带着旧的未修复错误加载进来的，自动补红框
         if (current_errors.contains(path)) {
-          child->setStyleSheet(
-              "border: 2px solid red; background-color: #ffe6e6;");
+          sem::SetState(child, "error");
         } else if (pending_changes_.count(path.toStdString())) {
-          child->setStyleSheet("font-weight: bold; color: #b35900;");
+          sem::SetState(child, "modified");
         }
       }
     }
@@ -413,12 +440,11 @@ void ConfigMainWindow::OnTreeSelectionChanged(QTreeWidgetItem* current,
       }
 
       // 2. 闪烁黄光提示一下
-      QString orig_style = target_w->styleSheet();
-      target_w->setStyleSheet(
-          orig_style +
-          " background-color: #ffff99; border: 2px solid #ffcc00;");
-      QTimer::singleShot(1000, target_w.data(), [target_w, orig_style]() {
-        if (target_w) target_w->setStyleSheet(orig_style);
+      // 定位闪烁：临时状态 `locate`，1s 后恢复原状态（不再拼接/还原样式表）
+      const QVariant prev_state = target_w->property("state");
+      sem::SetState(target_w.data(), "locate");
+      QTimer::singleShot(1000, target_w.data(), [target_w, prev_state]() {
+        if (target_w) sem::SetStateValue(target_w.data(), prev_state);
       });
     }
   }
@@ -458,7 +484,7 @@ void ConfigMainWindow::OnBatchedConfigChanged(
       // 我们绝对不能把用户正在打字的数据直接覆盖掉！否则会让人极其抓狂。
       // 只能变成警告态提示用户。
       if (pending_changes_.count(safe_path)) {
-        widget->setStyleSheet("border: 2px solid orange;");
+        sem::SetState(widget, "warning");  // 后台改动警告
         widget->setToolTip(
             tr("⚠️ Warning: Data changed by background system! Apply to overwrite or reload this page."));
         if (dependency_graph_) dependency_graph_->OnParameterChanged(safe_path);
@@ -470,7 +496,7 @@ void ConfigMainWindow::OnBatchedConfigChanged(
       if (errs.removeAll(path) > 0) {
         this->setProperty("backend_errors", errs);
       }
-      widget->setStyleSheet("");
+      sem::SetState(widget, nullptr);
 
       // 寻址对应的具体控件，进行精细化的同值拦截与数值更新
       QSpinBox* spin = widget->inherits("QSpinBox")
@@ -785,7 +811,7 @@ void ConfigMainWindow::DiscardAllPendingChanges() {
     } catch (...) {
       auto it = global_widget_map_.find(qs_path);
       if (it != global_widget_map_.end() && !it->second.isNull()) {
-        it->second->setStyleSheet("");
+        sem::SetState(it->second.data(), nullptr);
         it->second->setToolTip("");
       }
     }
@@ -848,8 +874,7 @@ bool ConfigMainWindow::ApplyChanges() {
     QString qs_path = QString::fromStdString(path);
     if (global_widget_map_.count(qs_path) &&
         !global_widget_map_[qs_path].isNull()) {
-      global_widget_map_[qs_path]->setStyleSheet(
-          "font-weight: bold; color: #b35900;");
+      sem::SetState(global_widget_map_[qs_path].data(), "modified");
     }
   }
 
@@ -1014,8 +1039,7 @@ bool ConfigMainWindow::ApplyChanges() {
         // 立刻把 UI 上的输入框糊上一层大红油漆，以示惩戒
         if (global_widget_map_.count(qpath) &&
             !global_widget_map_[qpath].isNull()) {
-          global_widget_map_[qpath]->setStyleSheet(
-              "border: 2px solid red; background-color: #ffe6e6;");
+          sem::SetState(global_widget_map_[qpath].data(), "error");
         }
 
         // 把左边导航树的那一截染成红十字，让用户就算在别的页面也能注意到
@@ -1081,7 +1105,7 @@ void ConfigMainWindow::RefreshPageValues(const QString& group_key) {
 
     auto it = global_widget_map_.find(qs_path);
     if (it != global_widget_map_.end() && !it->second.isNull()) {
-      it->second->setStyleSheet("");
+      sem::SetState(it->second.data(), nullptr);
       it->second->setToolTip(QString::fromUtf8(snap.meta.tooltip_key.data(),
                                                snap.meta.tooltip_key.size()));
     }

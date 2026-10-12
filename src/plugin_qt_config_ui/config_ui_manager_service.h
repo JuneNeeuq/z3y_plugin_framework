@@ -73,6 +73,14 @@ class ConfigUIManagerService
   void SetCurrentUserRole(const std::string& role) override;
 
   /**
+   * @brief 设置外观皮肤（Default/None/Custom），见 `IConfigUIManager::ConfigSkin`。
+   * @details 窗口未创建时记忆，创建时套用；已创建时立即套用。宿主接入自有主题
+   *   只需调一次 `SetSkin(None)`（跟随宿主应用级样式）。
+   */
+  void SetSkin(ConfigSkin mode,
+               const std::string& custom_qss = std::string()) override;
+
+  /**
    * @brief 暂存外部注入的自定义面板工厂。
    * @details 存入 `custom_panels_` 字典中，当主窗口创建时会将此字典传递给主窗口以便实例化。
    * @param custom_key 对应的绑定键值。
@@ -93,6 +101,11 @@ class ConfigUIManagerService
 
   /** @brief 当前生效的用户角色字符串。 */
   std::string current_role_;
+
+  /** @brief 外观皮肤模式（默认库自带皮肤）；宿主可改为 None/Custom。 */
+  ConfigSkin skin_mode_ = ConfigSkin::Default;
+  /** @brief `Custom` 模式下宿主传入的 QSS。 */
+  std::string skin_qss_;
   
   /** @brief 翻译器实例，保证其生命周期与框架一致。 */
   std::unique_ptr<QTranslator> translator_;

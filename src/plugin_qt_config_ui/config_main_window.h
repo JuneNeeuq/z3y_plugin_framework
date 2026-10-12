@@ -51,6 +51,15 @@ class ConfigMainWindow : public QMainWindow {
 
   /** @brief 设定当前的查阅者角色（例如 "Admin"），以便根据权限屏蔽高级或者保密设置。 */
   void SetRole(const std::string& role);
+
+  /**
+   * @brief 设定外观皮肤（Default/None/Custom）——供宿主接入自有主题。
+   * @details 窗口自带"默认皮肤"（开箱即用）；宿主可整体替换（Custom）或关闭
+   *   （None，跟随宿主应用级样式/主题，按中立语义属性 `role`/`state` 渲染）。
+   * @param custom_qss 仅 `mode == Custom` 时使用。
+   */
+  void SetSkin(z3y::interfaces::ui::IConfigUIManager::ConfigSkin mode,
+               const QString& custom_qss = QString());
   
   /** @brief 导入从业务层发来的所有自定义界面创建器（工厂函数）。 */
   void SetCustomPanels(
@@ -97,6 +106,8 @@ class ConfigMainWindow : public QMainWindow {
  private:
   /** @brief 创建并排列窗口内的所有的控件容器。 */
   void SetupUI();
+  /** @brief 读取库内置的默认皮肤 QSS（qrc 资源）。 */
+  static QString LoadDefaultSkinQss();
   /** @brief 扫描底层的所有配置信息，将所有的一级、二级分组装配进左侧导航树。 */
   void LoadNavigationTree();
   /** @brief 递归刷新树节点的可见性，支持高级参数的级联隐藏。 */

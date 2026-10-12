@@ -4,14 +4,48 @@
  */
 
 #pragma once
-#include <QVariant>
+#include <QStyle>
 #include <QString>
+#include <QVariant>
 #include <QVariantList>
+#include <QWidget>
 #include "interfaces_core/config_types.h"
 
 namespace z3y {
 namespace plugins {
 namespace qt_ui {
+
+/**
+ * @brief 中立语义：库只打"语义标记"，不写外观（颜色/尺寸）。
+ *
+ * @details
+ * 属性名用通用词汇，不绑定任何宿主的主题实现：
+ *   - `role`  ：`primary` / `secondary` / `danger`  —— 按钮角色
+ *   - `state` ：`modified` / `error` / `warning` / `invalid` / `locate` —— 参数状态
+ *
+ * 外观由"库自带默认皮肤"（`ConfigSkin::Default`）或"宿主风格"
+ * （`ConfigSkin::None`，宿主按这些属性渲染）决定——见 `ConfigSkin`。
+ */
+namespace sem {
+/** @brief 设按钮语义角色（primary/secondary/danger）；`role=nullptr` 清除 */
+inline void SetRole(QWidget* w, const char* role) {
+  if (!w) return;
+  w->setProperty("role", role ? QVariant(QString::fromLatin1(role)) : QVariant());
+  w->style()->unpolish(w);
+  w->style()->polish(w);
+}
+/** @brief 设参数状态（原样 QVariant，便于保存/恢复）；空 QVariant 即清除 */
+inline void SetStateValue(QWidget* w, const QVariant& state) {
+  if (!w) return;
+  w->setProperty("state", state);
+  w->style()->unpolish(w);
+  w->style()->polish(w);
+}
+/** @brief 设参数状态（modified/error/warning/invalid/locate）；`state=nullptr` 清除 */
+inline void SetState(QWidget* w, const char* state) {
+  SetStateValue(w, state ? QVariant(QString::fromLatin1(state)) : QVariant());
+}
+}  // namespace sem
 
 /**
  * @brief 使用 std::visit 将纯正 C++ 后端的 ConfigValue 变体降维转换为 Qt 界面世界通用的 QVariant。

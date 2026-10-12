@@ -12,6 +12,7 @@
 
 #include <QMetaType>
 #include <QApplication>
+#include <QString>
 
 #include "config_main_window.h"
 #include "event_bridge.h"
@@ -75,6 +76,8 @@ void ConfigUIManagerService::ShowConfigWindow(void* parent) {
     // 把收集到的配置数据全部喂给主窗口
     main_window_->SetCustomPanels(custom_panels_);
     main_window_->SetRole(current_role_);
+    // 套用宿主设定的皮肤（默认 Default：库自带皮肤；宿主可设 None 跟随自身主题）
+    main_window_->SetSkin(skin_mode_, QString::fromStdString(skin_qss_));
   }
 
   // 常规的 Qt 窗口显示三连击：显示、置顶、激活焦点
@@ -91,6 +94,15 @@ void ConfigUIManagerService::SetCurrentUserRole(const std::string& role) {
   // 如果窗口已经存在，直接透传下去触发 UI 重新排版
   if (main_window_) {
     main_window_->SetRole(role);
+  }
+}
+
+void ConfigUIManagerService::SetSkin(ConfigSkin mode,
+                                     const std::string& custom_qss) {
+  skin_mode_ = mode;
+  skin_qss_ = custom_qss;
+  if (main_window_) {
+    main_window_->SetSkin(mode, QString::fromStdString(custom_qss));
   }
 }
 

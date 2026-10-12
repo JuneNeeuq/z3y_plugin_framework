@@ -41,7 +41,25 @@ class IConfigUIManager : public virtual z3y::IComponent {
   /**
    * @brief 组件的唯一身份标识符声明。框架通过该 ID 和版本号来定位和加载具体的实现。
    */
-  Z3Y_DEFINE_INTERFACE(IConfigUIManager, "z3y-config-ui-manager", 1, 0);
+  Z3Y_DEFINE_INTERFACE(IConfigUIManager, "z3y-config-ui-manager", 1, 1);
+
+  /**
+   * @brief 外观皮肤模式（1,1 新增）。
+   *
+   * @details 库自带一份"默认皮肤"，宿主可整体替换或关闭，以便接入自身风格：
+   *   - `Default`：用库自带默认皮肤（开箱即用；宿主什么都不用做）。
+   *   - `None`   ：不套库皮肤——控件**跟随宿主应用级样式/主题**（宿主按库的
+   *                中立语义属性 `role` / `state` 自行渲染）。
+   *   - `Custom` ：使用宿主传入的 QSS（可基于库默认皮肤改少量色值）。
+   */
+  enum class ConfigSkin { Default = 0, None = 1, Custom = 2 };
+
+  /**
+   * @brief 设置外观皮肤（见 `ConfigSkin`）；窗口未创建时记忆、创建时应用。
+   * @param custom_qss 仅当 `mode == Custom` 时使用。
+   */
+  virtual void SetSkin(ConfigSkin mode,
+                       const std::string& custom_qss = std::string()) = 0;
 
   /**
    * @brief 呼出（显示）系统的配置主界面窗口。

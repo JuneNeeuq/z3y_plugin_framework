@@ -1,0 +1,66 @@
+/*
+ * 配置 UI 库的"默认皮肤"（开箱即用；宿主可用 SetSkin(None) 关闭、Custom 替换）。
+ *
+ * 只作用于库自己的窗口子树（在 ConfigMainWindow 上 setStyleSheet）。
+ * 库内的控件只挂中立语义：
+ *   role  = primary | secondary | danger          （按钮角色）
+ *   state = modified | error | warning | invalid | locate   （参数状态）
+ */
+
+/* ------------------------------ 按钮 ------------------------------ */
+QPushButton {
+    padding: 6px 14px;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    background: #FFFFFF;
+    color: #1F2937;
+}
+QPushButton:hover { background: #F1F5F9; }
+QPushButton:pressed { background: #E2E8F0; }
+QPushButton:disabled {
+    color: #9CA3AF;
+    background: #F3F4F6;
+    border-color: #E4E8EE;
+}
+QPushButton[role="primary"] {
+    background: #2563EB;
+    color: #FFFFFF;
+    border-color: #2563EB;
+}
+QPushButton[role="primary"]:hover { background: #1D4ED8; border-color: #1D4ED8; }
+QPushButton[role="danger"] {
+    background: #FFFFFF;
+    color: #DC2626;
+    border-color: #DC2626;
+}
+QPushButton[role="danger"]:hover { background: #FEE2E2; }
+
+/* ------------------------------ 分组框 ---------------------------- */
+QGroupBox {
+    font-weight: bold;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    margin-top: 1ex;
+    padding: 10px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top center;
+    padding: 0 3px;
+}
+
+/* --------------------- 参数状态（中立语义标记） ------------------- */
+QWidget[state="modified"] { color: #B45309; font-weight: bold; }
+QWidget[state="error"] {
+    border: 2px solid #DC2626;
+    background-color: #FEE2E2;
+}
+QWidget[state="warning"] { border: 2px solid #F59E0B; }
+QWidget[state="invalid"] {
+    color: #DC2626;
+    border: 1px dashed #DC2626;
+}
+QWidget[state="locate"] {
+    background-color: #FEF9C3;
+    border: 2px solid #FACC15;
+}

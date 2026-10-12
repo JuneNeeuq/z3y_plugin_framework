@@ -4,6 +4,7 @@
  */
 
 #include "widget_factory.h"
+#include "qt_utils.h"  // sem::SetState（中立状态语义）
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -151,11 +152,7 @@ QWidget* WidgetFactory::CreatePage(
   // 4. 遍历所有二级分组，生成带边框和标题的 QGroupBox 控件组
   for (const auto& [subg_name, items] : grouped_snaps) {
     QGroupBox* group_box = new QGroupBox(QString::fromStdString(subg_name));
-    group_box->setStyleSheet(
-        "QGroupBox { font-weight: bold; border: 1px solid #c0c0c0; "
-        "border-radius: 5px; margin-top: 1ex; padding: 10px; } "
-        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: "
-        "top center; padding: 0 3px; }");
+    // 分组框外观由"库自带皮肤"或"宿主风格"决定（库内不写死外观）。
     QVBoxLayout* group_layout = new QVBoxLayout(group_box);
 
     // 4.1 在 GroupBox 内部的右上角注入一个 “[↺] Reset Data” 复原按钮
@@ -209,7 +206,7 @@ QWidget* WidgetFactory::CreatePage(
           control = new QLabel(
               QString("❌ Custom Panel Missing: %1")
                   .arg(QString::fromStdString(snap.meta.custom_ui_key)));
-          control->setStyleSheet("color: red; border: 1px dashed red;");
+          sem::SetState(control, "invalid");
         }
       } else if (snap.meta.widget_type ==
                      z3y::interfaces::core::WidgetType::kFilePicker ||
@@ -607,7 +604,7 @@ QWidget* WidgetFactory::CreatePage(
 
         // UI视觉反馈
         if (has_pending)
-          control->setStyleSheet("font-weight: bold; color: #b35900;");
+          sem::SetState(control, "modified");
         else
           control->setToolTip(QString::fromStdString(snap.meta.tooltip_key));
 
